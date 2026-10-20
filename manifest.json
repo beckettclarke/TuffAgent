@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "TuffAgent",
+  "version": "1.1.0",
+  "description": "A fast browser agent in your sidebar. Bring any model through OpenRouter.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel",
+    "tabs",
+    "tabGroups",
+    "bookmarks",
+    "history",
+    "scripting",
+    "storage",
+    "unlimitedStorage",
+    "webNavigation",
+    "debugger"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": {
+    "default_title": "Open TuffAgent",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "Open TuffAgent"
+    }
+  },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["keys.js", "content.js"], "run_at": "document_idle" }
+  ]
+}

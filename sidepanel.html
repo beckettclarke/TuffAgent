@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TuffAgent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-mark" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff9a5a"/><stop offset=".55" stop-color="#ff6a3d"/><stop offset="1" stop-color="#e2482b"/>
+      </linearGradient>
+      <symbol id="i-mark" viewBox="0 0 24 24">
+        <rect x="1" y="1" width="22" height="22" rx="7" fill="url(#g-mark)"/>
+        <path d="M7 8.2h10M12.6 8.2 10.4 17.4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div id="app">
+    <header class="top">
+      <div class="brand">
+        <svg class="mark"><use href="#i-mark"/></svg>
+        <span class="word">TuffAgent</span>
+      </div>
+      <button id="modelBtn" class="model-chip" title="Choose model">
+        <span class="pdot"></span>
+        <span id="modelName" class="model-name">Model</span>
+        <svg class="chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
+      </button>
+      <div class="top-actions">
+        <button id="newBtn" class="icon-btn" title="New chat (⌘⇧O)">
+          <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+        </button>
+        <button id="historyBtn" class="icon-btn" title="History">
+          <svg viewBox="0 0 20 20"><path d="M3.8 10a6.2 6.2 0 1 0 1.9-4.5M3.5 3.8v2.6h2.6"/><path d="M10 6.8V10l2.2 1.4"/></svg>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <svg viewBox="0 0 20 20"><path d="M3.5 6h7M14.5 6h2M3.5 14h2M9.5 14h7"/><circle cx="12.5" cy="6" r="2"/><circle cx="7.5" cy="14" r="2"/></svg>
+        </button>
+      </div>
+      <div class="progress"></div>
+    </header>
+
+    <main id="scroll">
+      <section id="empty" class="empty">
+        <div class="halo"><svg class="mark big"><use href="#i-mark"/></svg></div>
+        <h1>What should we get done?</h1>
+        <p class="sub">TuffAgent can read pages, click, type, manage tabs and bookmarks, and run JavaScript.</p>
+        <div class="suggestions">
+          <button class="sugg" data-prompt="Summarize this page in a few bullet points.">
+            <span class="si"><svg viewBox="0 0 20 20"><path d="M5 5.5h10M5 9.5h10M5 13.5h6"/></svg></span>
+            <span>Summarize this page</span>
+          </button>
+          <button class="sugg" data-prompt="Open the top 3 stories on Hacker News in new background tabs and tell me what each is about.">
+            <span class="si"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M3 8.5h14M6.5 5V3.5"/></svg></span>
+            <span>Open the top 3 Hacker News stories</span>
+          </button>
+          <button class="sugg" data-prompt="Look at all my open tabs and group them by topic with short, clear names.">
+            <span class="si"><svg viewBox="0 0 20 20"><rect x="3" y="3.5" width="6" height="6" rx="1.5"/><rect x="11" y="3.5" width="6" height="6" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/></svg></span>
+            <span>Group my tabs by topic</span>
+          </button>
+          <button class="sugg" data-prompt="Find links on this page I haven't visited before and bookmark the most interesting one into a folder called TuffAgent.">
+            <span class="si"><svg viewBox="0 0 20 20"><path d="M6 3.5h8a1 1 0 0 1 1 1v12l-5-3.2-5 3.2v-12a1 1 0 0 1 1-1z"/></svg></span>
+            <span>Bookmark something interesting here</span>
+          </button>
+        </div>
+      </section>
+      <div id="thread" class="thread"></div>
+    </main>
+
+    <footer class="dock">
+      <button id="jump" class="jump" title="Jump to latest">
+        <svg viewBox="0 0 16 16"><path d="M8 3.5v9M4 8.5l4 4 4-4"/></svg>
+      </button>
+      <div class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="Ask TuffAgent to do anything…" spellcheck="false"></textarea>
+        <div class="composer-row">
+          <div id="tabChip" class="tab-chip" title="Current tab">
+            <img id="tabIcon" alt="">
+            <span id="tabTitle">No tab</span>
+          </div>
+          <button id="sendBtn" class="send" title="Send (⏎)" disabled>
+            <svg class="arrow" viewBox="0 0 20 20"><path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9"/></svg>
+            <span class="sq"></span>
+          </button>
+        </div>
+      </div>
+    </footer>
+
+    <section id="onboard" class="onboard" hidden>
+      <div class="ob-card">
+        <div class="halo"><svg class="mark big"><use href="#i-mark"/></svg></div>
+        <h1>Welcome to TuffAgent</h1>
+        <p class="sub">Paste an OpenRouter API key to use any model — Claude, GPT, Gemini, Grok, Qwen and hundreds more. It stays on this device.</p>
+        <form id="obForm">
+          <div class="field">
+            <input id="obKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+          </div>
+          <button class="btn primary" id="obGo" type="submit"><span>Connect</span><i class="spin"></i></button>
+          <p class="ob-err" id="obErr"></p>
+        </form>
+        <a class="ob-link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key at openrouter.ai/keys ↗</a>
+      </div>
+    </section>
+
+    <div id="scrim" class="scrim"></div>
+
+    <section id="picker" class="sheet" aria-hidden="true">
+      <div class="grab"></div>
+      <div class="sheet-head">
+        <div class="search">
+          <svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="m13.2 13.2 3.3 3.3"/></svg>
+          <input id="pickQ" placeholder="Search 300+ models…" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div id="pickList" class="pick-list"></div>
+    </section>
+
+    <section id="history" class="sheet" aria-hidden="true">
+      <div class="grab"></div>
+      <div class="sheet-title bar">
+        <span>History</span>
+        <button class="btn ghost sm" id="exportAll" type="button">
+          <svg viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 12.8h10"/></svg>Export all
+        </button>
+      </div>
+      <p class="hist-hint">Exports are JSON logs with every message, tool call, result, and timing — handy for debugging the agent.</p>
+      <div id="histList" class="hist-list"></div>
+    </section>
+
+    <section id="settings" class="sheet" aria-hidden="true">
+      <div class="grab"></div>
+      <div class="sheet-title">Settings</div>
+      <div class="set-body">
+        <label class="set-row">
+          <div><b>Model</b><small id="setModel">—</small></div>
+          <button class="btn ghost sm" id="setModelBtn" type="button">Change</button>
+        </label>
+        <label class="set-row">
+          <div><b>Reasoning</b><small>Higher effort thinks longer before acting</small></div>
+          <select id="setReasoning">
+            <option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          </select>
+        </label>
+        <label class="set-row">
+          <div><b>Fastest providers</b><small>Route to the highest-throughput host</small></div>
+          <input type="checkbox" class="switch" id="setFast">
+        </label>
+        <label class="set-row">
+          <div><b>Page highlight</b><small>Glow and cursor on pages the agent controls</small></div>
+          <input type="checkbox" class="switch" id="setOverlay">
+        </label>
+        <label class="set-row">
+          <div><b>Trusted input</b><small>Real mouse/keyboard events via DevTools protocol. Works on stubborn sites; Chrome shows a debugging bar.</small></div>
+          <input type="checkbox" class="switch" id="setTrusted">
+        </label>
+        <label class="set-row">
+          <div><b>No step limit</b><small>Let the agent keep going until it's done or you stop it</small></div>
+          <input type="checkbox" class="switch" id="setUnlimited">
+        </label>
+        <label class="set-row" id="stepsRow">
+          <div><b>Max steps</b><small>Model rounds per request</small></div>
+          <input type="number" id="setSteps" min="1" max="500" class="num">
+        </label>
+        <div class="set-col">
+          <b>Custom instructions</b>
+          <textarea id="setInstr" rows="3" placeholder="e.g. Prefer DuckDuckGo. Reply in a casual tone."></textarea>
+        </div>
+        <div class="set-row">
+          <div><b>OpenRouter key</b><small id="setKey">—</small></div>
+          <button class="btn ghost sm danger" id="setKeyBtn" type="button">Disconnect</button>
+        </div>
+        <p class="set-foot">Shortcut: ⌘⇧Y opens the panel · Esc stops the agent</p>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
