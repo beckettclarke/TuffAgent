@@ -1,4 +1,5 @@
-import { agent, exec, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, TOOLS } from './tools.js';
+import { agent, exec, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, TOOLS } from './tools.js';
+import { PACKS, packsForUrl } from './sites/index.js';
 import { complete, checkKey, listModels } from './llm.js';
 import { md } from './md.js';
 
@@ -28,6 +29,8 @@ const MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform)
 let chatId = null;
 let chatCreated = 0;
 let chatLog = [];
+// Site packs this chat has used. Sticky, so the tool list (and the prompt cache) stays put.
+let chatPacks = new Set();
 
 const save = () => chrome.storage.local.set({ settings: S });
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -46,7 +49,7 @@ async function saveThread() {
   const { chats = [] } = await chrome.storage.local.get('chats');
   await chrome.storage.local.set({
     chats: [meta, ...chats.filter((c) => c.id !== chatId)],
-    ['chat:' + chatId]: { ...meta, messages: slim, log: chatLog },
+    ['chat:' + chatId]: { ...meta, messages: slim, log: chatLog, packs: [...chatPacks] },
     currentChat: chatId,
   }).catch(() => {});
 }
@@ -67,6 +70,8 @@ function loadChat(c) {
   chatCreated = c?.created || 0;
   chatLog = c?.log || [];
   messages = repair(Array.isArray(c?.messages) ? c.messages : []);
+  chatPacks = new Set(c?.packs || []);
+  restoreChecklist(messages);
 }
 
 const log = (type, data) => chatLog.push({ t: Date.now(), type, ...data });
@@ -91,11 +96,15 @@ const IC = {
   sel: '<rect x="2.5" y="4" width="11" height="8" rx="2"/><path d="m6 7.3 2 2 2-2"/>',
   group: '<rect x="2" y="3" width="5" height="5" rx="1.2"/><rect x="9" y="3" width="5" height="5" rx="1.2"/><rect x="2" y="10" width="12" height="3.5" rx="1.2"/>',
   drag: '<path d="M3 3h3M3 3v3M13 13h-3M13 13v-3M3 3l10 10"/>',
+  paste: '<rect x="3.5" y="3" width="9" height="11" rx="1.5"/><path d="M6 3V2h4v1M6 7h4M6 9.5h4"/>',
+  menu: '<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>',
+  list: '<path d="m2.5 4.5 1 1 2-2M2.5 10.5l1 1 2-2M7.5 4.5h6M7.5 10.5h6"/>',
 };
 const TOOL_ICON = {
   tabs_list: 'tab', tab_open: 'tab', tab_switch: 'tab', tab_close: 'tab', tab_group: 'group', navigate: 'nav', read_page: 'read',
   get_text: 'read', find: 'find', click: 'click', drag: 'drag', type: 'type', key: 'key', scroll: 'scroll', hover: 'hover', select_option: 'sel',
   screenshot: 'shot', run_js: 'code', bookmarks: 'book', history_search: 'hist', wait: 'wait',
+  paste: 'paste', menu: 'menu', checklist: 'list', ...Object.assign({}, ...PACKS.map((p) => p.icons || {})),
 };
 const icon = (name) => `<svg viewBox="0 0 16 16">${IC[TOOL_ICON[name]] || IC.code}</svg>`;
 const CHECK = '<svg class="check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></svg>';
@@ -129,6 +138,34 @@ function userBubble(text) {
 }
 
 function fmtMs(ms) { return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`; }
+const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const fmtCost = (c) => `$${c === 0 ? '0' : c < 0.01 ? c.toFixed(4) : c.toFixed(3)}`;
+function fmtDur(ms) {
+  const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  const pad = (n) => String(n).padStart(2, '0');
+  return h ? `${h}h ${pad(m % 60)}m` : m ? `${m}m ${pad(s % 60)}s` : `${s}s`;
+}
+
+// ── Chat totals: agent working time (not time waiting on the user), tokens and
+// cost across every run in this chat. Finished runs come from the log's "end"
+// entries; the run in progress is added live.
+let live = null;
+let liveTick = 0;
+function paintTotals() {
+  let ms = 0, cost = 0, tokens = 0;
+  for (const e of chatLog) if (e.type === 'end') { ms += e.ms || 0; cost += e.cost || 0; tokens += e.tokens || 0; }
+  if (live) { ms += performance.now() - live.t0; cost += live.cost; tokens += live.tokens; }
+  $('#totals').hidden = !live && !ms;
+  $('#totTime').textContent = fmtDur(ms);
+  $('#totTok').textContent = fmtTok(tokens);
+  $('#totCost').textContent = fmtCost(cost);
+}
+function liveTotals(on) {
+  clearInterval(liveTick);
+  live = on ? { t0: performance.now(), cost: 0, tokens: 0 } : null;
+  if (on) liveTick = setInterval(paintTotals, 1000);
+  paintTotals();
+}
 
 class Turn {
   constructor() {
@@ -237,8 +274,8 @@ class Turn {
     const parts = [];
     if (steps) parts.push(`${steps} step${steps === 1 ? '' : 's'}`);
     parts.push(fmtMs(ms));
-    if (tokens) parts.push(`${tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : tokens} tok`);
-    if (cost) parts.push(`$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`);
+    if (tokens) parts.push(`${fmtTok(tokens)} tok`);
+    if (cost) parts.push(fmtCost(cost));
     this.root.appendChild(el('div', 'meta', parts.map((p) => `<span>${p}</span>`).join('')));
     follow();
   }
@@ -277,10 +314,13 @@ function replay() {
     if (m._meta) turn.meta(m._meta);
   }
   setEmpty();
+  paintTotals();
   follow(true);
 }
 
 // ── Prompt + request assembly ──
+const activePacks = () => PACKS.filter((p) => chatPacks.has(p.id));
+
 function systemPrompt() {
   // Date only: the system prompt opens every request, so it must stay byte-stable for prompt caching.
   return `You are TuffAgent, a fast browser agent living in the user's Chrome side panel. You control the browser through tools.
@@ -288,18 +328,25 @@ Date: ${new Date().toDateString()}. Platform: ${MAC ? 'macOS — shortcuts use M
 
 How to work:
 - Act, don't narrate. Do the task with tools; only ask when genuinely blocked or before risky actions.
-- Speed matters. When the next steps are predictable, emit several tool calls in one response (e.g. type into each field, then click submit) — they run in order.
+- Speed matters: every response costs a model round trip, so do as much as you can per response. When the next steps are predictable, emit several tool calls in one response (e.g. type into each field, then click submit, or a batch of independent edits) — they run in order. One tool call per response is the slow path.
 - Element refs (e.g. e12) come from read_page/find. Prefer refs over selectors or coordinates. Refs go stale after navigation.
 - navigate and tab_open already return a snapshot of the new page, and actions that trigger navigation return one too — don't call read_page right after them.
 - click/type/key/hover results list what newly appeared on screen ("New on screen": menus, submenus, dialogs, suggestions) with refs. Use those refs directly in your next calls — no read_page or find needed. Chain through menus in one response when you know the item names.
+- Long or formatted text: paste (markdown or HTML) instead of type — headings, lists, tables and links in one call.
+- Menus: menu with the visible labels (["Insert","Table"]) clicks through menu, submenu and item in one call.
 - Use get_text to read or summarize content, read_page to act, find to locate one thing on a big page, run_js for bulk extraction or anything tools can't do.${modelInfo()?.vision === false ? '' : `
 - Use screenshot when visual layout matters, the snapshot is confusing, or content is drawn on a canvas (Google Docs/Sheets text). Screenshots tag clickable elements with their refs — click those by ref, never by guessed coordinates. Use x/y only for canvas content, reading positions off the 100px edge rulers. To see the result of actions, end that same response with a screenshot call instead of spending a separate round.`}
 - Text goes in with one type call, never key-by-key. In rich editors (Google Docs etc.), click where the text goes, then type without ref (types at the caret); use key Enter for new paragraphs.
 - key takes repeats ("Shift+ArrowRight*12"). Select ranges with drag, a triple click (clicks: 3), or click then click again with modifiers: "shift".
+- Move cards, list items and files with drag (ref → to_ref); to_position "top"/"bottom" drops before/after an item. Check the result or a snapshot to confirm it moved.
 - The current tab is given in <context>. tab_open (active) and tab_switch change it; other page tools accept tab_id.
-- If something fails, adapt (re-read the page, try another element, scroll) instead of repeating the same call.
+- Tasks with many requirements: call checklist first (one item per requirement), mark items done only after verifying them, and report from it with exact counts.
+- Trust tool results. A result without an error means it happened; don't re-check each step with screenshots, read_page or re-reads, and never redo something a result or an earlier check already confirmed. Verify once after a batch of edits and once at the end.
+- Keep thinking short: pick the obvious next actions and emit them. Don't re-plan the whole task every round.
+- If something fails, adapt (re-read the page, try another element, scroll) instead of repeating the same call. When a call fails, the remaining calls in that response are skipped, so re-plan from the error. After two failures on the same approach, switch approach (a dedicated tool, paste, menu search, run_js), or skip the item and come back to it.
+- Finish the job. Don't stop with requirements left because a step is slow or fiddly; skip a stuck item, do the rest, then come back to it. Stop early only when truly blocked (sign-in, permission, missing information), and then say exactly what is left.
 - Before irreversible or sensitive actions — purchases, sending messages or emails, posting publicly, deleting data, entering payment info or passwords — stop and ask the user to confirm, unless they explicitly asked for exactly that.
-- Finish with a short answer or summary in markdown. No preamble.${S.instructions.trim() ? `\n\nUser's custom instructions:\n${S.instructions.trim()}` : ''}`;
+- Finish with a short answer or summary in markdown. No preamble.${activePacks().map((p) => `\n\n${p.prompt}`).join('')}${S.instructions.trim() ? `\n\nUser's custom instructions:\n${S.instructions.trim()}` : ''}`;
 }
 
 // Tool results are trimmed by age. The cut-off points move in steps of 10
@@ -313,9 +360,19 @@ function buildMessages() {
   messages.forEach((m, i) => { if (m.role === 'tool') toolOrd.set(i, toolOrd.size); });
   const fullFrom = Math.max(0, Math.floor((toolOrd.size - 6) / 10) * 10);
   const briefFrom = Math.max(0, Math.floor((toolOrd.size - 40) / 20) * 20);
+  // Old reasoning is most of the context on long runs (and invites the model to
+  // re-argue settled steps). Drop plain reasoning text before the same cut-off as
+  // tool results so the cache breaks at the same moment; signed or encrypted
+  // reasoning (Anthropic, Gemini, OpenAI) is kept because providers need it back.
+  const reasonFrom = fullFrom ? [...toolOrd].find(([, n]) => n === fullFrom)[0] : 0;
+  const signed = (d) => d.signature || d.data || d.type === 'reasoning.encrypted';
   const out = messages.map((m, i) => {
     const c = {};
     for (const k in m) if (k[0] !== '_') c[k] = m[k];
+    if (c.reasoning_details && i < reasonFrom) {
+      const keep = c.reasoning_details.filter(signed);
+      if (keep.length) c.reasoning_details = keep; else delete c.reasoning_details;
+    }
     if (m.role === 'tool' && typeof c.content === 'string') {
       const n = toolOrd.get(i);
       const cap = i < lastUser || n < briefFrom ? 300 : n < fullFrom ? 1200 : Infinity;
@@ -347,13 +404,15 @@ function requestBody() {
   const body = {
     model: S.model,
     messages: buildMessages(),
-    tools: toolsFor(info ? info.vision : true),
+    tools: toolsFor(info ? info.vision : true, [...chatPacks]),
     tool_choice: 'auto',
     parallel_tool_calls: true,
     max_tokens: 8192,
     usage: { include: true },
   };
-  if (S.fast) body.provider = { sort: 'throughput' };
+  // Agent turns are short (a few tool calls), so time to first token decides the
+  // speed, not tokens per second.
+  if (S.fast) body.provider = { sort: 'latency' };
   if (S.reasoning !== 'auto') body.reasoning = { effort: S.reasoning };
   return body;
 }
@@ -389,6 +448,7 @@ async function run() {
   agent.trusted = S.trusted;
   agent.overlay = S.overlay;
   const t0 = performance.now();
+  liveTotals(true);
   let steps = 0, cost = 0, tokens = 0, lastAssistant = null, hitLimit = true, stopped = false;
   const limit = S.unlimited ? Infinity : S.maxSteps;
   log('run', {
@@ -399,12 +459,16 @@ async function run() {
   try {
     for (let i = 0; i < limit; i++) {
       turn.waiting(i === 0 ? 'Thinking' : 'Working');
+      // Offer a site's tools once its page is open (and keep them for the rest of the chat).
+      for (const p of packsForUrl((await currentTabInfo())?.url)) chatPacks.add(p.id);
       const view = turn.response();
       // Each tool call starts as soon as its arguments finish streaming, so the
       // browser works while the model is still writing the next call. Calls run
       // strictly in order.
       const calls = [], results = [], images = [];
-      let chain = Promise.resolve(), started = 0;
+      // The calls in one response are a plan; once one fails, the rest act on a
+      // page that isn't what the model expected (typing into the wrong place).
+      let chain = Promise.resolve(), started = 0, failed = null;
       const parses = (tc) => { try { JSON.parse(tc.function.arguments?.trim() || '{}'); return true; } catch { return false; } };
       const pump = (final) => {
         while (started < calls.length && calls[started] && (final || parses(calls[started]))) {
@@ -420,6 +484,11 @@ async function run() {
           sv.done(false, { label: 'Cancelled' });
           return;
         }
+        if (failed) {
+          results[k] = { role: 'tool', tool_call_id: tc.id, content: `Skipped: ${failed} failed earlier in this response, so this call did not run.`, _label: 'Skipped', _ok: false };
+          sv.done(false, { label: 'Skipped' });
+          return;
+        }
         let args = null;
         try { args = tc.function.arguments?.trim() ? JSON.parse(tc.function.arguments) : {}; } catch {}
         sv.label(preLabel(name, args || {}));
@@ -431,6 +500,7 @@ async function run() {
           content = r.text; label = r.label; image = r.image;
         } catch (e) {
           ok = false;
+          failed = name;
           content = `Error: ${e.message}`;
           label = `${preLabel(name, args || {})} — failed`;
         }
@@ -468,7 +538,7 @@ async function run() {
         throw e;
       }
       const { msg, usage, finish, ttft, ms: llmMs, provider, genId } = res;
-      if (usage) { cost += usage.cost || 0; tokens += usage.total_tokens || 0; }
+      if (usage) { cost += usage.cost || 0; tokens += usage.total_tokens || 0; live.cost = cost; live.tokens = tokens; paintTotals(); }
       log('llm', {
         round: i, model: S.model, provider, id: genId, finish, ms: Math.round(llmMs), ttft: Math.round(ttft), usage,
         text: msg.content || '', toolCalls: (msg.tool_calls || []).map((tc) => tc.function.name),
@@ -498,6 +568,7 @@ async function run() {
     else { log('error', { message: e.message, stack: e.stack }); turn.error(e.message, () => run()); }
   } finally {
     log('end', { steps, ms: Math.round(performance.now() - t0), cost, tokens, stopped, hitLimit });
+    liveTotals(false);
     running = false;
     ctrl = null;
     document.body.classList.remove('running');
@@ -551,6 +622,7 @@ async function newChat() {
   loadChat(null);
   chrome.storage.local.set({ currentChat: null });
   thread.innerHTML = '';
+  paintTotals();
   const em = $('#empty');
   em.hidden = false;
   em.style.animation = 'none'; void em.offsetWidth; em.style.animation = '';
@@ -792,7 +864,7 @@ async function exportChats(ids) {
     browser: navigator.userAgent,
     settings,
     systemPrompt: systemPrompt(),
-    tools: TOOLS.map((t) => t.function.name),
+    tools: [...TOOLS, ...PACKS.flatMap((p) => p.tools)].map((t) => t.function.name),
     chats: chats.map(({ messages: msgs, log: lg, ...meta }) => ({ ...meta, log: lg || [], messages: msgs })),
   });
   toast(ids.length === 1 ? 'Log exported' : `Exported ${chats.length} chats`);

@@ -8,15 +8,31 @@
   const ids = new WeakMap();
   let seq = 0;
 
-  const refOf = (el) => {
+  // role + name are kept so a ref whose element was re-rendered can be found again.
+  const refOf = (el, role, name) => {
     let r = ids.get(el);
-    if (!r) { r = 'e' + (++seq); ids.set(el, r); refs.set(r, new WeakRef(el)); }
+    if (!r) { r = 'e' + (++seq); ids.set(el, r); refs.set(r, { w: new WeakRef(el) }); }
+    if (role && name) Object.assign(refs.get(r), { role, name });
     return r;
   };
   const byRef = (r) => {
-    const el = refs.get(String(r).replace(/^\[|\]$/g, ''))?.deref();
-    return el && el.isConnected ? el : null;
+    const id = String(r).replace(/^\[|\]$/g, '');
+    const e = refs.get(id);
+    const el = e?.w.deref();
+    if (el && el.isConnected) return el;
+    return e?.name ? refind(id, e) : null;
   };
+  // Frameworks swap nodes on re-render: take the one visible element with the same role and name.
+  function refind(id, e) {
+    let hit = null;
+    for (const el of elements(document.body || document.documentElement)) {
+      if ((roleOf(el) || tag(el)) !== e.role || nameOf(el, e.role) !== e.name || !visible(el)) continue;
+      if (hit) return null;
+      hit = el;
+    }
+    if (hit) { ids.set(hit, id); e.w = new WeakRef(hit); }
+    return hit;
+  }
 
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -104,6 +120,7 @@
     return { x: x1, y: y1, w: x2 - x1, h: y2 - y1, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, ox: r.ox, oy: r.oy, full: r };
   }
 
+  const frameDoc = (f) => { try { return f.contentDocument; } catch { return null; } };
   const within = (anc, n) => { while (n) { if (n === anc) return true; n = n.parentNode || n.host; } return false; };
 
   // Topmost element at a viewport point, descending into shadow roots and same-origin frames.
@@ -183,7 +200,7 @@
   }
 
   function line(el, role, name) {
-    let s = `[${refOf(el)}] ${role}`;
+    let s = `[${refOf(el, role, name)}] ${role}`;
     if (name) s += ` "${name}"`;
     const t = tag(el);
     if (t === 'input' || t === 'textarea') {
@@ -227,7 +244,17 @@
       const role = roleOf(el);
       const interactive = isInteractive(el, role);
       const isText = !interactive && mode === 'all' && (role === 'heading' || TEXT_TAGS.has(tag(el)) || role === 'img');
-      if (!interactive && !isText) continue;
+      if (!interactive && !isText) {
+        if ((el.tagName === 'IFRAME' || el.tagName === 'FRAME') && !frameDoc(el) && visible(el)) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 40 && r.height > 20 && !(viewportOnly && (r.bottom < 0 || r.top > vh))) {
+            let host = '';
+            try { host = new URL(el.src, location.href).host; } catch {}
+            out.push(`[${refOf(el)}] frame (cross-origin${host ? ' ' + host : ''}: contents hidden; run_js frame:"${host}" or screenshot)`);
+          }
+        }
+        continue;
+      }
       if (isText && el.closest('a,button,[role=button],[role=link]')) continue;
       if (!visible(el)) continue;
       const r = el.getBoundingClientRect();
@@ -271,24 +298,44 @@
     return head.concat(out).join('\n');
   }
 
+  // Words in a descriptive query ("Roboto option in the font list") that say
+  // what kind of thing to look for, not what its label says.
+  const FILLER = new Set(['the', 'a', 'an', 'in', 'on', 'of', 'to', 'for', 'with', 'and', 'or', 'not', 'at', 'from', 'that', 'this', 'its',
+    'exact', 'exactly', 'named', 'labeled', 'labelled', 'called', 'item', 'items', 'element', 'entry', 'list', 'menu', 'dialog', 'panel',
+    'toolbar', 'dropdown', 'field', 'box', 'icon', 'control', 'section', 'area', 'popup', 'window', 'page', 'visible', 'only', 'one']);
+  const ROLE_WORDS = new Set([...ROLES, 'heading', 'img', 'image', 'menuitem', 'input']);
+
   function find({ query, limit = 25 }) {
     const q = clean(query).toLowerCase();
     if (!q) throw new Error('Empty query');
     const words = q.split(' ');
-    const hits = [];
+    // Quoted phrases are the label; otherwise drop filler and (asides).
+    const quoted = [...q.matchAll(/["'“‘]([^"'”’]{2,})["'”’]/g)].map((m) => m[1].trim());
+    const loose = (quoted.length ? quoted.join(' ') : q.replace(/\([^)]*\)/g, ' '))
+      .split(/[^\p{L}\p{N}#@.+-]+/u).filter((w) => w && !FILLER.has(w));
+    const roleWant = q.split(/[^a-z]+/).filter((w) => ROLE_WORDS.has(w)).map((w) => (w === 'image' ? 'img' : w === 'input' ? 'textbox' : w));
+    const label = loose.filter((w) => !ROLE_WORDS.has(w));
+    const phrase = (quoted[0] || label.join(' ')).trim();
+    const hits = [], near = [];
     for (const el of elements(document.body)) {
       const role = roleOf(el);
       const interactive = isInteractive(el, role);
       if (!interactive && role !== 'heading' && !TEXT_TAGS.has(tag(el))) continue;
       const name = nameOf(el, role);
       const hay = (name + ' ' + (el.getAttribute('placeholder') || '') + ' ' + (el.id || '') + ' ' + (interactive ? '' : clean(el.innerText).slice(0, 300))).toLowerCase();
-      if (!words.every((w) => hay.includes(w))) continue;
+      const exact = words.every((w) => hay.includes(w));
+      const got = exact ? 0 : label.filter((w) => hay.includes(w)).length;
+      if (!exact && (!label.length || got < Math.max(1, Math.ceil(label.length * 0.5)))) continue;
       if (!visible(el)) continue;
-      const score = (interactive ? 2 : 0) + (name.toLowerCase() === q ? 3 : 0) + (hay.startsWith(q) ? 1 : 0);
-      hits.push({ score, s: interactive ? line(el, role || tag(el), name) : `[${refOf(el)}] ${role || tag(el)} "${clip(clean(el.innerText), 120)}"` });
+      const nm = name.toLowerCase().replace(/[►▸▶]/g, '').trim();
+      const s = interactive ? line(el, role || tag(el), name) : `[${refOf(el)}] ${role || tag(el)} "${clip(clean(el.innerText), 120)}"`;
+      if (exact) hits.push({ score: (interactive ? 2 : 0) + (nm === q ? 3 : 0) + (hay.startsWith(q) ? 1 : 0), s });
+      else near.push({ score: got / label.length * 4 + (nm === phrase ? 6 : nm.startsWith(phrase) ? 2 : label.includes(nm) ? 3 : 0) + (roleWant.includes(role) ? 2 : 0) + (interactive ? 1 : 0), s });
     }
-    hits.sort((a, b) => b.score - a.score);
-    return hits.length ? hits.slice(0, limit).map((h) => h.s).join('\n') : `No matches for "${query}".`;
+    const top = (list) => list.sort((a, b) => b.score - a.score).slice(0, limit).map((h) => h.s).join('\n');
+    if (hits.length) return top(hits);
+    if (near.length) return `No exact match for "${query}"; closest by label words:\n${top(near)}`;
+    return `No matches for "${query}". find matches visible label text — query with the words on the element, e.g. "Playfair Display".`;
   }
 
   function resolve(t = {}) {
@@ -309,11 +356,21 @@
   function settle(quiet = 80, cap = 700) {
     return new Promise((res) => {
       let timer = setTimeout(done, quiet);
-      const mo = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, quiet); });
+      const mo = new MutationObserver((muts) => {
+        if (muts.length < 12 && muts.every(trivial)) return;
+        clearTimeout(timer); timer = setTimeout(done, quiet);
+      });
       const capT = setTimeout(done, cap);
       function done() { mo.disconnect(); clearTimeout(timer); clearTimeout(capT); res(); }
       mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
     });
+  }
+
+  // A style/class flip on a caret-sized or hidden node (blinking cursors, spinners).
+  function trivial(m) {
+    if (m.type !== 'attributes' || (m.attributeName !== 'style' && m.attributeName !== 'class')) return false;
+    const r = m.target.getBoundingClientRect?.();
+    return !!r && (r.width < 4 || r.height < 4);
   }
 
   // ── What an action changed: interactive elements that came on screen ──
@@ -427,7 +484,15 @@
     const from = aim(t);
     let to;
     const toEl = t.to_ref ? resolve({ ref: t.to_ref }) : null;
-    if (toEl) { const r = viewRect(toEl) || rectOf(toEl); to = { x: r.cx, y: r.cy, desc: describe(toEl) }; }
+    if (toEl) {
+      // An edge instead of the center: drops before/after an item in sortable lists.
+      const r = viewRect(toEl) || rectOf(toEl);
+      const ins = (n) => Math.min(8, n / 4);
+      const pos = t.to_position || 'center';
+      const x = pos === 'left' ? r.x + ins(r.w) : pos === 'right' ? r.x + r.w - ins(r.w) : r.cx;
+      const y = pos === 'top' ? r.y + ins(r.h) : pos === 'bottom' ? r.y + r.h - ins(r.h) : r.cy;
+      to = { x, y, desc: describe(toEl) + (pos === 'center' ? '' : ` (${pos})`) };
+    }
     else if (t.to_x != null && t.to_y != null) to = { x: +t.to_x, y: +t.to_y, desc: `(${t.to_x}, ${t.to_y})` };
     else throw new Error('drag needs to_ref or to_x/to_y');
     begin();
@@ -437,20 +502,61 @@
     const { from, to } = dragEnds(t);
     return { x1: from.x, y1: from.y, x2: to.x, y2: to.y, desc: `${from.desc} to ${to.desc}` };
   }
+  // Native HTML5 drag source: draggable="true", a link, an image, or selected text.
+  function dragSource(el) {
+    const d = el.closest?.('[draggable]');
+    if (d) return d.draggable ? d : null;
+    if (el.closest?.('a[href], img')) return el.closest('a[href], img');
+    const sel = el.ownerDocument.getSelection();
+    return sel && !sel.isCollapsed && sel.containsNode(el, true) ? el : null;
+  }
   async function drag(t) {
     const { from, to } = dragEnds(t);
     const mods = MODS(t.modifiers);
     mouse(from.el, 'pointerdown', from.lx, from.ly, mods); mouse(from.el, 'mousedown', from.lx, from.ly, { detail: 1, ...mods });
-    const steps = 8;
+    if (+t.hold > 0) await new Promise((r) => setTimeout(r, Math.min(+t.hold, 3000)));
+    // HTML5 drag-and-drop runs on drag events, not mouse moves.
+    const src = dragSource(from.el);
+    let dt = null, over = null, accepted = false, dropped = false;
+    const dragEv = (target, type, x, y) => {
+      const view = target.ownerDocument.defaultView;
+      return target.dispatchEvent(new view.DragEvent(type, { bubbles: true, cancelable: type !== 'dragleave' && type !== 'dragend', composed: true, view, clientX: x, clientY: y, dataTransfer: dt, ...mods }));
+    };
+    if (src) {
+      dt = new DataTransfer();
+      if (src.matches('a[href]')) { dt.setData('text/uri-list', src.href); dt.setData('text/plain', src.href); }
+      else if (src.matches('img')) dt.setData('text/uri-list', src.currentSrc || src.src);
+      else if (!src.draggable) dt.setData('text/plain', String(src.ownerDocument.getSelection()));
+      if (!dragEv(src, 'dragstart', from.lx, from.ly)) dt = null;
+    }
+    const steps = 10;
     for (let i = 1; i <= steps; i++) {
       const x = from.x + (to.x - from.x) * i / steps, y = from.y + (to.y - from.y) * i / steps;
       const h = hitDeep(x, y);
       fx.cursor(x, y);
-      if (h.el) { mouse(h.el, 'pointermove', h.lx, h.ly, { buttons: 1, ...mods }); mouse(h.el, 'mousemove', h.lx, h.ly, { buttons: 1, ...mods }); }
+      if (!h.el) continue;
+      if (dt) {
+        if (h.el !== over) {
+          if (over) dragEv(over, 'dragleave', h.lx, h.ly);
+          dragEv(h.el, 'dragenter', h.lx, h.ly);
+          over = h.el;
+        }
+        accepted = !dragEv(h.el, 'dragover', h.lx, h.ly);
+        if (src.draggable) dragEv(src, 'drag', from.lx, from.ly);
+      } else {
+        mouse(h.el, 'pointermove', h.lx, h.ly, { buttons: 1, ...mods }); mouse(h.el, 'mousemove', h.lx, h.ly, { buttons: 1, ...mods });
+      }
+      // A frame's pause between moves; none in background tabs, where frames never come.
+      await new Promise((r) => (document.hidden ? r() : (requestAnimationFrame(r), setTimeout(r, 50))));
     }
     const end = hitDeep(to.x, to.y);
-    if (end.el) { mouse(end.el, 'pointerup', end.lx, end.ly, mods); mouse(end.el, 'mouseup', end.lx, end.ly, { detail: 1, ...mods }); }
-    return `Dragged ${from.desc} to ${to.desc}` + await finish();
+    if (dt) {
+      if (end.el && accepted) { dragEv(end.el, 'drop', end.lx, end.ly); dropped = true; }
+      else if (over) dragEv(over, 'dragleave', end.lx, end.ly);
+      dragEv(src, 'dragend', end.lx, end.ly);
+    } else if (end.el) { mouse(end.el, 'pointerup', end.lx, end.ly, mods); mouse(end.el, 'mouseup', end.lx, end.ly, { detail: 1, ...mods }); }
+    const how = dt ? (dropped ? ' (drag-and-drop: dropped)' : ' (drag-and-drop: target did not accept the drop)') : '';
+    return `Dragged ${from.desc} to ${to.desc}${how}` + await finish();
   }
 
   function setNative(el, v) {
@@ -490,7 +596,7 @@
     } else if (own && (tag(el) === 'input' || tag(el) === 'textarea')) {
       try { el.setSelectionRange(el.value.length, el.value.length); } catch {}
     }
-    return { el, cleared, desc: own ? describe(el) : 'the focused element' };
+    return { el, cleared, plain: tag(el) === 'input' || tag(el) === 'textarea', desc: own ? describe(el) : 'the focused element' };
   }
 
   async function type(t = {}) {
@@ -517,6 +623,69 @@
     let tail = '';
     if (t.submit) { press(deepActive() || el, TuffKeys.parse('Enter')[0]); tail = ' and pressed Enter'; }
     return `Typed "${clip(text, 60)}" into ${desc}${tail}` + await finish(60, t.submit ? 700 : 400);
+  }
+
+  // Paste text/HTML at the caret as a ClipboardEvent, the way editors (Docs,
+  // Notion, Gmail, ProseMirror) expect rich content. If no page handler takes
+  // it, insert it ourselves; { unhandled } tells the panel to use the real clipboard.
+  async function paste(t = {}) {
+    const { el, desc } = prepField({ ref: t.ref, selector: t.selector, clear: false });
+    const target = deepActive() || el;
+    const doc = target.ownerDocument;
+    const dt = new DataTransfer();
+    if (t.html) dt.setData('text/html', t.html);
+    dt.setData('text/plain', t.text || '');
+    const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true, composed: true });
+    if (target.dispatchEvent(ev)) {
+      const isInput = tag(target) === 'input' || tag(target) === 'textarea';
+      if (isInput) {
+        if (!doc.execCommand('insertText', false, t.text)) {
+          const v = target.value, a = target.selectionStart ?? v.length, b = target.selectionEnd ?? v.length;
+          setNative(target, v.slice(0, a) + t.text + v.slice(b));
+          target.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertFromPaste', data: t.text }));
+        }
+      } else if (!target.isContentEditable || !(t.html ? doc.execCommand('insertHTML', false, t.html) : doc.execCommand('insertText', false, t.text))) {
+        return { unhandled: true, desc };
+      }
+    }
+    return { text: `Pasted ${t.html ? 'formatted ' : ''}text (${(t.text || '').length} chars) into ${desc}` + await finish(80, 900) };
+  }
+
+  // ── Menus: find a visible item by its label, preferring open popups ──
+  const MENU_ROLES = new Set(['menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'tab', 'treeitem', 'button', 'link', 'combobox', 'listbox']);
+  // Submenu arrows ("Roboto ►") and quotes don't count toward a label.
+  const norm = (s) => clean(s).toLowerCase().replace(/[‘’'"“”…►▸▶]|\.\.\.$/g, '').replace(/\s+/g, ' ').trim();
+  // offscreen: also items scrolled out of view inside a long menu (they get scrolled in).
+  function menuFind({ label, roles, offscreen } = {}) {
+    const want = norm(label);
+    if (!want) throw new Error('Empty menu label');
+    const ok = roles ? new Set(roles) : MENU_ROLES;
+    const words = want.split(' ');
+    let best = null, bestScore = 0;
+    const popupNames = [];
+    for (const el of elements(document.body || document.documentElement)) {
+      const role = roleOf(el);
+      if (!role || !ok.has(role) || !visible(el) || (!offscreen && !viewRect(el))) continue;
+      const raw = nameOf(el, role);
+      const name = norm(raw);
+      const popup = !!el.closest('[role=menu],[role=listbox],[role=dialog],[role=tree]');
+      if (popup && name && popupNames.length < 40 && !popupNames.includes(raw)) popupNames.push(raw);
+      if (!name) continue;
+      let s = name === want ? 100 : name.startsWith(want) ? 60 : name.includes(want) ? 30 : words.every((w) => name.includes(w)) ? 15 : 0;
+      if (!s) continue;
+      if (role.startsWith('menuitem') || role === 'option') s += 10;
+      if (popup) s += 5;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') s -= 50;
+      if (s >= bestScore) { best = el; bestScore = s; } // ties: later in the DOM (popups render last)
+    }
+    if (!best || bestScore <= 0) {
+      throw new Error(`No visible menu item matching "${label}".` + (popupNames.length ? ` Open menu has: ${popupNames.join(' | ')}` : ''));
+    }
+    const r = focusTarget(best);
+    begin();
+    const on = (a) => best.getAttribute(a) === 'true';
+    return { x: r.cx, y: r.cy, ref: refOf(best), desc: describe(best), expanded: best.getAttribute('aria-expanded'), sub: best.getAttribute('aria-haspopup'),
+      checked: on('aria-checked') || on('aria-selected') || on('aria-pressed'), exact: norm(nameOf(best, roleOf(best))) === want };
   }
 
   function focusables(doc) {
@@ -807,9 +976,9 @@
   })();
 
   window.__tuff = {
-    snapshot, find, click, point, type, key, keyPrep, scroll, hover, selectOption, drag, dragPoints,
-    prepField: (t) => { const { cleared, desc } = prepField(t); return { cleared, desc }; },
-    text, waitFor, viewport, begin, settle: () => finish(),
+    snapshot, find, click, point, type, key, keyPrep, scroll, hover, selectOption, drag, dragPoints, paste, menuFind,
+    prepField: (t) => { const { cleared, plain, desc } = prepField(t); return { cleared, plain, desc }; },
+    text, waitFor, viewport, begin, settle: (q, c) => finish(q, c),
     capturePrep, captureDone,
     overlay: (on, label) => fx.show(on, label),
   };

@@ -88,6 +88,11 @@
           </button>
         </div>
       </div>
+      <div id="totals" class="totals" title="Whole chat: time the agent spent working (not time waiting on you), tokens and cost" hidden>
+        <span class="tt-time"><svg viewBox="0 0 16 16"><circle cx="8" cy="8.5" r="5"/><path d="M8 6v2.5l1.6 1M6.5 2.5h3"/></svg><b id="totTime">0s</b></span>
+        <span><b id="totTok">0</b> tok</span>
+        <span><b id="totCost">$0</b></span>
+      </div>
     </footer>
 
     <section id="onboard" class="onboard" hidden>
@@ -146,7 +151,7 @@
           </select>
         </label>
         <label class="set-row">
-          <div><b>Fastest providers</b><small>Route to the highest-throughput host</small></div>
+          <div><b>Fastest providers</b><small>Route to the lowest-latency host</small></div>
           <input type="checkbox" class="switch" id="setFast">
         </label>
         <label class="set-row">

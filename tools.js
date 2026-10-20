@@ -1,6 +1,8 @@
 // Browser tools. Everything here runs in the side panel and talks to Chrome
 // APIs directly, so each action is a single round trip.
 import './keys.js';
+import { mdToHtml, htmlToText } from './docmd.js';
+import { PACKS, packOf } from './sites/index.js';
 
 export const agent = {
   tabId: null,
@@ -161,14 +163,45 @@ async function cdpClick(tabId, x, y, clicks = 1, modifiers = 0) {
     await mouseEv(tabId, 'mouseReleased', x, y, { button: 'left', buttons: 0, clickCount: i, modifiers });
   }
 }
-async function cdpDrag(tabId, p, modifiers = 0) {
-  await mouseEv(tabId, 'mouseMoved', p.x1, p.y1, { modifiers });
-  await mouseEv(tabId, 'mousePressed', p.x1, p.y1, { button: 'left', buttons: 1, clickCount: 1, modifiers });
-  const steps = 10;
-  for (let i = 1; i <= steps; i++) {
-    await mouseEv(tabId, 'mouseMoved', p.x1 + (p.x2 - p.x1) * i / steps, p.y1 + (p.y2 - p.y1) * i / steps, { button: 'left', buttons: 1, modifiers });
+// Mouse drag with pauses so pointer-based sortables (dnd-kit, SortableJS) see
+// real movement. A native HTML5 drag is intercepted and replayed as drag events,
+// since CDP mouse moves alone never deliver dragover/drop. Returns 'dropped',
+// 'refused' (HTML5 drag, target didn't accept) or null (plain mouse drag).
+async function cdpDrag(tabId, p, modifiers = 0, hold = 0) {
+  let data = null;
+  const onEv = (src, method, params) => { if (src.tabId === tabId && method === 'Input.dragIntercepted') data = params.data; };
+  chrome.debugger.onEvent.addListener(onEv);
+  await cdp(tabId, 'Input.setInterceptDrags', { enabled: true }).catch(() => {});
+  try {
+    await mouseEv(tabId, 'mouseMoved', p.x1, p.y1, { modifiers });
+    await mouseEv(tabId, 'mousePressed', p.x1, p.y1, { button: 'left', buttons: 1, clickCount: 1, modifiers });
+    await sleep(Math.min(Math.max(+hold || 0, 40), 3000));
+    const steps = 12;
+    const at = (i) => [p.x1 + (p.x2 - p.x1) * i / steps, p.y1 + (p.y2 - p.y1) * i / steps];
+    let i = 1;
+    for (; i <= steps && !data; i++) {
+      const [x, y] = at(i);
+      await mouseEv(tabId, 'mouseMoved', x, y, { button: 'left', buttons: 1, modifiers });
+      await sleep(16);
+    }
+    if (!data) {
+      await sleep(60);
+      await mouseEv(tabId, 'mouseReleased', p.x2, p.y2, { button: 'left', buttons: 0, clickCount: 1, modifiers });
+      return null;
+    }
+    const drag = (type, x, y) => cdp(tabId, 'Input.dispatchDragEvent', { type, x, y, data, modifiers });
+    await drag('dragEnter', ...at(i - 1));
+    for (; i <= steps; i++) { await drag('dragOver', ...at(i)); await sleep(16); }
+    await drag('dragOver', p.x2, p.y2);
+    await sleep(60);
+    let res = 'dropped';
+    await drag('drop', p.x2, p.y2).catch(() => { res = 'refused'; });
+    await mouseEv(tabId, 'mouseReleased', p.x2, p.y2, { button: 'left', buttons: 0, clickCount: 1, modifiers });
+    return res;
+  } finally {
+    chrome.debugger.onEvent.removeListener(onEv);
+    await cdp(tabId, 'Input.setInterceptDrags', { enabled: false }).catch(() => {});
   }
-  await mouseEv(tabId, 'mouseReleased', p.x2, p.y2, { button: 'left', buttons: 0, clickCount: 1, modifiers });
 }
 
 // Page JS through the DevTools protocol: no CSP / Trusted Types limits.
@@ -188,6 +221,86 @@ async function jsCdp(tabId, code) {
   if (out.exceptionDetails && /SyntaxError/.test(out.exceptionDetails.exception?.description || '')) out = await run(`{${code}\n}`);
   if (out.exceptionDetails) return { err: out.exceptionDetails.exception?.description || out.exceptionDetails.text };
   return { ok: out.result?.value ?? 'undefined' };
+}
+
+// Real clipboard + ⌘V/Ctrl+V: a trusted paste for pages that ignore synthetic
+// ones. Focus emulation lets the page write the clipboard while the panel has focus.
+async function clipboardPaste(tabId, html, text) {
+  await cdp(tabId, 'Emulation.setFocusEmulationEnabled', { enabled: true });
+  try {
+    const items = { 'text/plain': text, ...(html ? { 'text/html': html } : {}) };
+    const out = await cdp(tabId, 'Runtime.evaluate', {
+      expression: `navigator.clipboard.write([new ClipboardItem(Object.fromEntries(Object.entries(${JSON.stringify(items)}).map(([t, v]) => [t, new Blob([v], { type: t })])))]).then(() => 1)`,
+      awaitPromise: true, returnByValue: true, userGesture: true,
+    });
+    if (out.exceptionDetails) throw new Error('Clipboard write failed: ' + (out.exceptionDetails.exception?.description || out.exceptionDetails.text));
+    await cdpKeys(tabId, MAC ? 'Meta+v' : 'Control+v');
+  } finally {
+    cdp(tabId, 'Emulation.setFocusEmulationEnabled', { enabled: false }).catch(() => {});
+  }
+}
+
+// Paste text / markdown / HTML at the caret (or into a ref). Synthetic paste
+// first (keeps the user's clipboard), then the real clipboard if the page ignored it.
+async function pasteContent(id, a = {}) {
+  const html = a.html != null ? String(a.html) : a.markdown != null ? mdToHtml(a.markdown) : null;
+  const text = a.text != null ? String(a.text) : html ? htmlToText(html) : '';
+  if (!text && !html) throw new Error('paste needs text, markdown or html');
+  if (!a.clipboard) {
+    const r = await cs(id, 'paste', { ref: a.ref, selector: a.selector, html, text });
+    if (!r) throw new Error('Page is navigating; try again.');
+    if (!r.unhandled) return r.text;
+  }
+  await cs(id, 'keyPrep', { ref: a.ref });
+  await clipboardPaste(id, html, text);
+  return `Pasted ${html ? 'formatted ' : ''}text (${text.length} chars) through the clipboard` + ((await cs(id, 'settle', 80, 900)) || '');
+}
+
+// Run a function in a tab's top frame (or given frames) and return its result.
+async function page(tabId, func, args = [], world = 'ISOLATED', frameIds) {
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: frameIds ? { tabId, frameIds } : { tabId }, func, args, world });
+    return r?.result;
+  } catch (e) { const f = friendly(e); if (f) throw f; return null; }
+}
+
+// ── Checklist: requirement tracking for long, multi-part tasks ──
+let checklist = [];
+const MARK = { todo: '○', done: '✓', failed: '✗' };
+// "id: text", a bare string (numbered), or { id, text }.
+function item(x, i) {
+  if (typeof x !== 'string') return { id: String(x?.id ?? i + 1), text: String(x?.text ?? x?.id ?? '') };
+  const m = x.match(/^\s*([\w.-]{1,24})\s*:\s*(.+)$/);
+  return m ? { id: m[1], text: m[2] } : { id: String(i + 1), text: x };
+}
+function applyChecklist(a = {}) {
+  if (Array.isArray(a.set)) checklist = a.set.map(item).map((x) => ({ ...x, status: 'todo', note: '' }));
+  if (Array.isArray(a.add)) for (const x of a.add) checklist.push({ ...item(x, checklist.length), status: 'todo', note: '' });
+  // A note is evidence for one item; on a bulk update it would be copied onto every row.
+  const noteFor = (ids, status) => a.note && ((ids?.length === 1) || (status === 'failed' && !a.done?.length));
+  const mark = (ids, status) => {
+    const miss = [];
+    for (const id of ids || []) {
+      const it = checklist.find((x) => x.id === String(id));
+      if (it) { it.status = status; if (noteFor(ids, status)) it.note = a.note; } else miss.push(id);
+    }
+    return miss;
+  };
+  return [...mark(a.done, 'done'), ...mark(a.failed, 'failed'), ...mark(a.todo, 'todo')];
+}
+function checklistText(miss = []) {
+  const n = (st) => checklist.filter((x) => x.status === st).length;
+  const head = `Checklist: ${n('done')}/${checklist.length} done${n('failed') ? `, ${n('failed')} failed` : ''}${n('todo') ? `, ${n('todo')} to do` : ''}`;
+  const rows = checklist.map((x) => `${MARK[x.status]} ${x.id}: ${x.text}${x.note ? ` — ${x.note}` : ''}`);
+  return [head, ...rows, ...(miss.length ? [`Unknown ids: ${miss.join(', ')}`] : [])].join('\n');
+}
+// Rebuild from a saved chat's checklist calls.
+export function restoreChecklist(messages = []) {
+  checklist = [];
+  for (const m of messages) for (const tc of m.tool_calls || []) {
+    if (tc.function?.name !== 'checklist') continue;
+    try { applyChecklist(JSON.parse(tc.function.arguments || '{}')); } catch {}
+  }
 }
 
 // ── Helpers ──
@@ -289,7 +402,7 @@ export const TOOLS = [
     max_chars: { type: 'integer' },
     tab_id: tabId,
   }),
-  fn('find', 'Find elements by visible text/label. Returns refs.', { query: { type: 'string' }, tab_id: tabId }, ['query']),
+  fn('find', 'Find elements by visible text/label. Returns refs. Query with the label words themselves ("Playfair Display"), not a description.', { query: { type: 'string' }, tab_id: tabId }, ['query']),
   fn('click', 'Click by ref (preferred), CSS selector, or viewport x/y (only for canvas content with no ref). Result lists elements that newly appeared (menus, dialogs) with refs.', {
     ref, selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
     clicks: { type: 'integer', description: '2 = double-click, 3 = triple-click (selects a paragraph)' },
@@ -302,8 +415,17 @@ export const TOOLS = [
   fn('key', 'Press keys on the focused element. Space-separated combos; "*N" repeats, e.g. "Enter", "Meta+a Backspace", "Shift+ArrowRight*5", "ArrowDown*3 Enter". Use type for text.', {
     keys: { type: 'string' }, ref, tab_id: tabId,
   }, ['keys']),
-  fn('drag', 'Press, move and release the mouse: from ref or x/y to to_ref or to_x/to_y. Selects text or table cells, moves sliders, resizes.', {
+  fn('paste', 'Paste text, markdown or HTML at the caret (or into ref) in one step, keeping formatting: headings, lists, links, bold, tables (markdown "||" merges a cell into the previous one), images by URL. Best way to put long or formatted text into rich editors.', {
+    markdown: { type: 'string' }, html: { type: 'string' }, text: { type: 'string', description: 'Plain text' }, ref,
+    clipboard: { type: 'boolean', description: 'Force the real clipboard + paste shortcut' }, tab_id: tabId,
+  }),
+  fn('menu', 'Click through a menu path by visible labels in one call, e.g. ["Format","Paragraph styles","Title"]. Opens menus and submenus in order; returns what is on screen after the last click.', {
+    path: { type: 'array', items: { type: 'string' } }, tab_id: tabId,
+  }, ['path']),
+  fn('drag', 'Drag from ref or x/y to to_ref or to_x/to_y. Handles drag-and-drop (kanban cards, sortable lists, file trees, draggable items) as well as plain mouse drags: selecting text or table cells, sliders, resizing, panning.', {
     ref, x: { type: 'number' }, y: { type: 'number' }, to_ref: { type: 'string' }, to_x: { type: 'number' }, to_y: { type: 'number' },
+    to_position: { type: 'string', enum: ['center', 'top', 'bottom', 'left', 'right'], description: 'Where on to_ref to drop (default center). top/bottom drops before/after an item in a list.' },
+    hold: { type: 'integer', description: 'Ms to hold the press before moving, for long-press-to-drag UIs' },
     modifiers: { type: 'string' }, tab_id: tabId,
   }),
   fn('scroll', 'Scroll the page (or the scrollable area under center), or bring a ref into view.', {
@@ -317,7 +439,7 @@ export const TOOLS = [
     labels: { type: 'boolean', description: 'Ref tags and rulers (default true)' }, tab_id: tabId,
   }),
   fn('run_js', 'Run JavaScript in the page (main world). Expression or statements; use `return` for statements. Async ok. Returns JSON.', {
-    code: { type: 'string' }, tab_id: tabId,
+    code: { type: 'string' }, frame: { type: 'string', description: 'Run inside an iframe: part of its URL/host (cross-origin ok)' }, tab_id: tabId,
   }, ['code']),
   fn('bookmarks', 'Bookmarks: search, recent, tree, create (omit url for folder), or remove.', {
     action: { type: 'string', enum: ['search', 'recent', 'tree', 'create', 'remove'] },
@@ -329,13 +451,21 @@ export const TOOLS = [
     query: { type: 'string', description: 'Empty for recent' }, days: { type: 'integer', description: 'Look back (default 30)' },
     max_results: { type: 'integer' },
   }),
+  fn('checklist', 'Track a multi-part task\'s requirements. set once at the start, then mark ids done/failed as you verify them (note = evidence). Base the final report on it.', {
+    set: { type: 'array', items: { type: 'string' }, description: 'One "id: requirement" per item' },
+    done: { type: 'array', items: { type: 'string' } }, failed: { type: 'array', items: { type: 'string' } }, note: { type: 'string' },
+  }),
   fn('wait', 'Wait for text/selector to appear (preferred) or a fixed time.', {
     text: { type: 'string' }, selector: { type: 'string' }, ms: { type: 'integer', description: 'Fixed wait, max 5000' },
     timeout_ms: { type: 'integer' }, tab_id: tabId,
   }),
 ];
 
-export const toolsFor = (vision) => (vision ? TOOLS : TOOLS.filter((t) => t.function.name !== 'screenshot'));
+// Core tools, plus site packs (e.g. Google Docs) only when active.
+export const toolsFor = (vision, packIds = []) => [
+  ...(vision ? TOOLS : TOOLS.filter((t) => t.function.name !== 'screenshot')),
+  ...PACKS.filter((p) => packIds.includes(p.id)).flatMap((p) => p.tools),
+];
 
 // Short label while a tool runs.
 export function preLabel(name, a = {}) {
@@ -362,7 +492,10 @@ export function preLabel(name, a = {}) {
     case 'bookmarks': return { search: `Searching bookmarks ${q(a.query)}`, recent: 'Recent bookmarks', tree: 'Reading bookmarks', create: `Bookmarking ${q(a.title)}`, remove: 'Removing bookmark' }[a.action] || 'Bookmarks';
     case 'history_search': return a.query ? `Searching history ${q(a.query)}` : 'Recent history';
     case 'wait': return a.text || a.selector ? `Waiting for ${q(a.text || a.selector)}` : `Waiting ${a.ms || 500}ms`;
-    default: return name;
+    case 'paste': return 'Pasting';
+    case 'menu': return `Menu ${q((a.path || []).join(' › '))}`;
+    case 'checklist': return 'Updating checklist';
+    default: return packOf(name)?.preLabel?.(name, a) || name;
   }
 }
 
@@ -486,8 +619,9 @@ export async function exec(name, a = {}) {
       if (agent.trusted) {
         const p = await cs(id, 'dragPoints', a);
         if (!p) throw new Error('Page is navigating; try again.');
-        await cdpDrag(id, p, mouseMods(a.modifiers));
-        text = `Dragged ${p.desc}` + ((await cs(id, 'settle')) || '');
+        const how = await cdpDrag(id, p, mouseMods(a.modifiers), a.hold);
+        const note = how === 'dropped' ? ' (drag-and-drop: dropped)' : how === 'refused' ? ' (drag-and-drop: target did not accept the drop)' : '';
+        text = `Dragged ${p.desc}${note}` + ((await cs(id, 'settle')) || '');
       } else text = (await cs(id, 'drag', a)) ?? 'Dragged (page navigated)';
       return { text: await afterAction(id, t0, text), label: firstLine(text) };
     }
@@ -499,8 +633,13 @@ export async function exec(name, a = {}) {
         const f = await cs(id, 'prepField', a);
         if (!f) throw new Error('Page is navigating; try again.');
         // insertText replaces the selection, so Backspace is only for clearing to empty.
-        if (a.text) await cdp(id, 'Input.insertText', { text: String(a.text) });
-        else if (f.cleared) await cdpKeys(id, 'Backspace');
+        // Rich editors get Enter between lines (a raw "\n" may not make a paragraph).
+        const parts = f.plain ? [String(a.text)] : String(a.text).split('\n');
+        for (let i = 0; i < parts.length; i++) {
+          if (i) await cdpKeys(id, 'Enter');
+          if (parts[i]) await cdp(id, 'Input.insertText', { text: parts[i] });
+        }
+        if (!a.text && f.cleared) await cdpKeys(id, 'Backspace');
         if (a.submit) await cdpKeys(id, 'Enter');
         text = `Typed "${clip(String(a.text), 60)}" into ${f.desc}${a.submit ? ' and pressed Enter' : ''}` + ((await cs(id, 'settle')) || '');
       } else {
@@ -570,13 +709,21 @@ export async function exec(name, a = {}) {
     case 'run_js': {
       const id = await resolveTab(a);
       const code = String(a.code || '');
+      let frameIds;
+      if (a.frame) {
+        const want = String(a.frame).toLowerCase();
+        const frames = (await chrome.webNavigation.getAllFrames({ tabId: id })) || [];
+        const f = frames.find((x) => x.frameId !== 0 && (String(x.frameId) === want || x.url.toLowerCase().includes(want)));
+        if (!f) throw new Error(`No frame matches "${a.frame}". Frames: ${frames.filter((x) => x.frameId).map((x) => clip(x.url, 80)).join(' | ') || 'none'}`);
+        frameIds = [f.frameId];
+      }
       // Trusted mode already holds the debugger: evaluate there first (no CSP/Trusted Types).
       let r = null, cdpErr = null;
-      if (agent.trusted) r = await jsCdp(id, code).catch((e) => { cdpErr = e; return null; });
+      if (agent.trusted && !frameIds) r = await jsCdp(id, code).catch((e) => { cdpErr = e; return null; });
       if (!r) {
         try {
           [{ result: r } = {}] = await chrome.scripting.executeScript({
-            target: { tabId: id }, world: 'MAIN', args: [code],
+            target: frameIds ? { tabId: id, frameIds } : { tabId: id }, world: 'MAIN', args: [code],
             func: async (code) => {
               const ser = (v) => {
                 if (v === undefined) return 'undefined';
@@ -597,6 +744,7 @@ export async function exec(name, a = {}) {
             },
           });
         } catch (e) { const f = friendly(e); if (f) throw f; }
+        if (r?.csp && frameIds) throw new Error('That frame blocks eval (CSP); run_js without frame can still reach same-origin frames.');
         if (r?.csp) {
           // Page CSP blocks eval — fall back to the DevTools protocol.
           if (cdpErr) throw new Error(`Page blocks eval and DevTools failed: ${cdpErr.message}`);
@@ -651,6 +799,43 @@ export async function exec(name, a = {}) {
       return { text: text || 'No history matches.', label: `Found ${res.length} history item${res.length === 1 ? '' : 's'}` };
     }
 
+    case 'paste': {
+      const id = await resolveTab(a);
+      const text = await pasteContent(id, a);
+      return { text: await afterAction(id, t0, text), label: firstLine(text) };
+    }
+
+    case 'menu': {
+      const id = await resolveTab(a);
+      const path = (Array.isArray(a.path) ? a.path : String(a.path || '').split(/\s*[>›]\s*/)).map(String).filter(Boolean);
+      if (!path.length) throw new Error('menu needs a path');
+      let diff = '';
+      for (let i = 0; i < path.length; i++) {
+        let p;
+        try { p = await cs(id, 'menuFind', { label: path[i] }); }
+        catch (e) {
+          // Don't leave half-opened menus behind: they swallow the next keys and clicks.
+          if (i) await (agent.trusted ? cdpKeys(id, `Escape*${i}`) : cs(id, 'key', { keys: `Escape*${i}` })).catch(() => {});
+          throw new Error(`${e.message}${i ? ` (closed the menu after “${path.slice(0, i).join(' › ')}”)` : ''}`);
+        }
+        if (!p) throw new Error('Page is navigating; try again.');
+        if (agent.trusted) {
+          await mouseEv(id, 'mouseMoved', p.x, p.y, {});
+          await cdpClick(id, p.x, p.y);
+        } else await cs(id, 'click', { ref: p.ref });
+        // Submenus open on hover/click; wait until the DOM settles before the next label.
+        diff = (await cs(id, 'settle', 60, i === path.length - 1 ? 700 : 450)) || '';
+      }
+      const text = `Clicked ${path.join(' › ')}` + diff;
+      return { text: await afterAction(id, t0, text), label: `Clicked ${clip(path.join(' › '), 70)}` };
+    }
+
+    case 'checklist': {
+      const miss = applyChecklist(a);
+      const text = checklistText(miss);
+      return { text, label: firstLine(text) };
+    }
+
     case 'wait': {
       if (a.text || a.selector) {
         const id = await resolveTab(a);
@@ -662,8 +847,17 @@ export async function exec(name, a = {}) {
       return { text: `Waited ${ms}ms`, label: `Waited ${ms}ms` };
     }
   }
+  const pack = packOf(name);
+  if (pack) return pack.exec(name, a, API);
   throw new Error(`Unknown tool ${name}`);
 }
+
+// What site packs get to work with.
+const API = {
+  agent, MAC, sleep, clip, resolveTab, cs, cdp, page, afterAction, exec,
+  keys: cdpKeys, click: cdpClick, mouseEv, paste: pasteContent, mdToHtml, htmlToText,
+  insertText: (tabId, text) => cdp(tabId, 'Input.insertText', { text }),
+};
 
 export async function overlayOff() {
   const ids = [...agent.touched];

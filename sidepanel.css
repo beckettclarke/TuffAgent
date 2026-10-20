@@ -321,6 +321,18 @@ main#scroll {
 .tab-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab-chip.flash span { animation: flash .6s ease; }
 
+.totals {
+  max-width: 760px; margin: 7px auto 0; display: flex; justify-content: center; align-items: center; gap: 10px;
+  font: 10.5px var(--mono); color: var(--fg-3); font-variant-numeric: tabular-nums; animation: fade .3s ease both;
+}
+.totals[hidden] { display: none; }
+.totals b { font-weight: 500; color: var(--fg-2); }
+.totals span + span::before { content: "·"; margin-right: 10px; opacity: .6; }
+.totals .tt-time { display: inline-flex; align-items: center; gap: 4px; }
+.totals svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+body.running .totals .tt-time { color: var(--accent); }
+body.running .totals .tt-time b { color: var(--accent); }
+
 .send {
   position: relative; width: 30px; height: 30px; border-radius: 10px; flex: none;
   display: grid; place-items: center;
