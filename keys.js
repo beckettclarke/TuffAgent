@@ -65,5 +65,5 @@ globalThis.TuffKeys ??= (() => {
     return out;
   }
 
-  return { parse };
+  return { parse, charKey };
 })();

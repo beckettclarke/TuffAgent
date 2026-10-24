@@ -2,6 +2,23 @@
 
 const BASE = 'https://openrouter.ai/api/v1';
 const HEADERS = { 'HTTP-Referer': 'https://github.com/tuffagent', 'X-Title': 'TuffAgent' };
+// OpenRouter sends keep-alive comments while a model thinks, so this long a
+// silence means the stream is dead, not slow.
+const IDLE_MS = 120000;
+
+// Rate limits, overloaded providers, dropped connections and stalled streams
+// are worth retrying. A prompt over the context window is flagged separately:
+// the caller has to shrink it, not resend it.
+const OVERFLOW = /context.{0,24}(length|window|limit|size)|maximum context|too many (input )?tokens|prompt is too long|reduce the length|input.{0,24}too (long|large)/i;
+export function apiError(message, { status = 0, retryAfter = 0, partial } = {}) {
+  const e = new Error(message);
+  e.status = status;
+  e.overflow = OVERFLOW.test(message);
+  e.retriable = !e.overflow && (!status || [408, 409, 425, 429].includes(status) || status >= 500);
+  e.retryAfter = retryAfter;
+  if (partial) e.partial = partial;
+  return e;
+}
 
 export async function checkKey(apiKey) {
   const r = await fetch(`${BASE}/key`, { headers: { Authorization: `Bearer ${apiKey}`, ...HEADERS } });
@@ -24,6 +41,7 @@ export async function listModels() {
       reasoning: (m.supported_parameters || []).includes('reasoning'),
       pin: +m.pricing?.prompt || 0,
       pout: +m.pricing?.completion || 0,
+      maxOut: m.top_provider?.max_completion_tokens || 0,
       created: m.created || 0,
     }));
 }
@@ -47,22 +65,45 @@ function mergeDetails(acc, items) {
  * Streams one completion. Calls handlers as data arrives and resolves with the
  * assembled assistant message plus usage. onToolReady(i, call) fires once a
  * tool call's arguments are complete (they parse, or the next call began), so it can run
- * while the rest of the response streams. A mid-stream error carries the
- * partial message as err.partial.
+ * while the rest of the response streams. Errors come from apiError(): a
+ * mid-stream one carries the partial message as err.partial. Stopping through
+ * `signal` rejects with an AbortError.
  */
 export async function complete({ apiKey, body, signal, onText, onReasoning, onToolStart, onToolReady }) {
   const started = performance.now();
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...HEADERS },
-    body: JSON.stringify({ ...body, stream: true }),
-    signal,
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    let msg = t;
-    try { const j = JSON.parse(t); msg = j.error?.metadata?.raw || j.error?.message || t; } catch {}
-    throw new Error(`${res.status} · ${String(msg).slice(0, 400)}`);
+  // Our own controller, so a stalled stream can be cut without the caller's signal.
+  const ac = new AbortController();
+  const stop = () => ac.abort();
+  signal?.addEventListener('abort', stop, { once: true });
+  let idle = 0, stalled = false;
+  const poke = () => { clearTimeout(idle); idle = setTimeout(() => { stalled = true; ac.abort(); }, IDLE_MS); };
+  const fail = (e, partial) => {
+    if (signal?.aborted) { if (partial && e && typeof e === 'object') e.partial = partial; return e; }
+    if (stalled) return apiError(`No data from the model for ${IDLE_MS / 1000}s (stream stalled)`, { partial });
+    if (e?.status != null) { if (partial) e.partial = partial; return e; }
+    // fetch/read TypeErrors: the connection dropped.
+    return apiError(`Connection to OpenRouter failed: ${e?.message || e}`, { partial });
+  };
+
+  poke();
+  let res;
+  try {
+    res = await fetch(`${BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...HEADERS },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal: ac.signal,
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      let msg = t;
+      try { const j = JSON.parse(t); msg = j.error?.metadata?.raw || j.error?.message || t; } catch {}
+      throw apiError(`${res.status} · ${String(msg).slice(0, 400)}`, { status: res.status, retryAfter: +res.headers.get('retry-after') || 0 });
+    }
+  } catch (e) {
+    clearTimeout(idle);
+    signal?.removeEventListener('abort', stop);
+    throw fail(e);
   }
 
   const msg = { role: 'assistant', content: '', tool_calls: [] };
@@ -77,6 +118,7 @@ export async function complete({ apiKey, body, signal, onText, onReasoning, onTo
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
+      poke();
       buf += dec.decode(value, { stream: true });
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {
@@ -87,7 +129,7 @@ export async function complete({ apiKey, body, signal, onText, onReasoning, onTo
         if (data === '[DONE]') continue;
         let j;
         try { j = JSON.parse(data); } catch { continue; }
-        if (j.error) throw new Error(j.error.message || 'Provider error');
+        if (j.error) throw apiError(`Provider error: ${j.error.metadata?.raw || j.error.message || 'unknown'}`.slice(0, 400), { status: +j.error.code || 0 });
         if (j.usage) usage = j.usage;
         if (j.provider) provider = j.provider;
         if (j.id) genId = j.id;
@@ -118,10 +160,14 @@ export async function complete({ apiKey, body, signal, onText, onReasoning, onTo
         }
       }
     }
+    // A provider that gives up mid-answer says so in finish_reason only.
+    if (finish === 'error') throw apiError('The provider ended the response with an error');
   } catch (e) {
     msg.tool_calls = msg.tool_calls.filter(Boolean);
-    e.partial = msg;
-    throw e;
+    throw fail(e, msg);
+  } finally {
+    clearTimeout(idle);
+    signal?.removeEventListener('abort', stop);
   }
 
   msg.tool_calls = msg.tool_calls.filter(Boolean);

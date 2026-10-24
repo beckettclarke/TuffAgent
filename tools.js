@@ -34,6 +34,22 @@ chrome.webNavigation.onDOMContentLoaded.addListener(navDone);
 chrome.webNavigation.onErrorOccurred.addListener(navDone);
 chrome.webNavigation.onCompleted.addListener(navDone);
 chrome.tabs.onRemoved.addListener((id) => { navDone({ tabId: id, frameId: 0 }); nav.delete(id); agent.touched.delete(id); });
+// Single-page apps change the URL without loading a page.
+const spaNav = (d) => {
+  if (d.frameId !== 0) return;
+  const n = nav.get(d.tabId) || { waiters: [] };
+  n.spa = { at: performance.now(), url: d.url };
+  nav.set(d.tabId, n);
+};
+chrome.webNavigation.onHistoryStateUpdated.addListener(spaNav);
+chrome.webNavigation.onReferenceFragmentUpdated.addListener(spaNav);
+
+// Tabs the page opens itself (target=_blank links, window.open) while an action runs.
+const opened = [];
+chrome.tabs.onCreated.addListener((t) => {
+  opened.push({ id: t.id, opener: t.openerTabId, windowId: t.windowId, at: performance.now() });
+  if (opened.length > 20) opened.shift();
+});
 
 function navStartedSince(tabId, t0) {
   const n = nav.get(tabId);
@@ -44,22 +60,23 @@ function waitNav(tabId, timeout = 8000) {
   if (!n?.pending) return Promise.resolve();
   return new Promise((r) => { n.waiters.push(r); setTimeout(r, timeout); });
 }
-// For actions we trigger ourselves (open/navigate): listen before acting.
+// For actions we trigger ourselves (open/navigate): listen before acting. A
+// same-document navigation (#hash, pushState) has no DOMContentLoaded, so it counts too.
 function loaded(tabId, timeout = 8000) {
   let off;
   const p = new Promise((res) => {
     const f = (d) => { if ((d.tabId ?? d) === tabId && (d.frameId ?? 0) === 0) done(); };
     const u = (id, info) => { if (id === tabId && info.status === 'complete') done(); };
     const t = setTimeout(done, timeout);
+    const evs = [chrome.webNavigation.onDOMContentLoaded, chrome.webNavigation.onErrorOccurred,
+      chrome.webNavigation.onReferenceFragmentUpdated, chrome.webNavigation.onHistoryStateUpdated];
     function done() {
-      chrome.webNavigation.onDOMContentLoaded.removeListener(f);
-      chrome.webNavigation.onErrorOccurred.removeListener(f);
+      for (const ev of evs) ev.removeListener(f);
       chrome.tabs.onUpdated.removeListener(u);
       clearTimeout(t); res();
     }
     off = done;
-    chrome.webNavigation.onDOMContentLoaded.addListener(f);
-    chrome.webNavigation.onErrorOccurred.addListener(f);
+    for (const ev of evs) ev.addListener(f);
     chrome.tabs.onUpdated.addListener(u);
   });
   p.cancel = off;
@@ -76,10 +93,21 @@ function friendly(e) {
   return new Error(m);
 }
 
+// A page call that never returns (a frozen page, or an alert/confirm that
+// blocks its scripts) must not hang the whole run.
+const CS_TIMEOUT = 15000;
+function within(p, ms) {
+  let t;
+  const late = new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error('timeout'), { late: true })), ms); });
+  return Promise.race([p, late]).finally(() => clearTimeout(t));
+}
+
 async function cs(tabId, method, ...args) {
   const target = { tabId };
   const ov = agent.overlay ? 'TuffAgent is working' : null;
-  const call = () => chrome.scripting.executeScript({
+  // Calls that wait on purpose get their own wait on top.
+  const ms = CS_TIMEOUT + (method === 'waitFor' ? Math.min(+args[0]?.timeout || 5000, 20000) : 0);
+  const call = () => within(chrome.scripting.executeScript({
     target,
     func: async (m, a, ov) => {
       const t = window.__tuff;
@@ -88,13 +116,21 @@ async function cs(tabId, method, ...args) {
       catch (e) { return { err: String(e?.message || e) }; }
     },
     args: [method, args, ov],
-  });
-  let res;
-  try { res = (await call())[0]?.result; }
-  catch (e) { const f = friendly(e); if (f) throw f; return null; }
+  }), ms);
+  const attempt = async () => {
+    try { return (await call())[0]?.result; }
+    catch (e) {
+      if (!e.late) { const f = friendly(e); if (f) throw f; return null; }
+      // Blocked by a JS dialog: answer it and try once more.
+      if (await unblock(tabId)) return (await call().catch(() => [{ result: null }]))[0]?.result;
+      throw new Error(`The page did not respond in ${ms / 1000}s (frozen or busy). Try screenshot, key Escape, or navigate.`);
+    }
+  };
+  let res = await attempt();
   if (res?.missing) {
-    try { await chrome.scripting.executeScript({ target, files: ['keys.js', 'content.js'] }); res = (await call())[0]?.result; }
-    catch (e) { const f = friendly(e); if (f) throw f; return null; }
+    try { await within(chrome.scripting.executeScript({ target, files: ['keys.js', 'content.js'] }), CS_TIMEOUT); }
+    catch (e) { if (e.late) throw new Error('The page did not respond (frozen or busy).'); const f = friendly(e); if (f) throw f; return null; }
+    res = await attempt();
   }
   if (ov) agent.touched.add(tabId);
   if (res == null) return null;
@@ -104,26 +140,105 @@ async function cs(tabId, method, ...args) {
 
 // ── Trusted input via the DevTools protocol (opt-in; shows Chrome's debug bar) ──
 const dbg = new Set();
-chrome.debugger.onDetach.addListener((s) => dbg.delete(s.tabId));
-async function cdp(tabId, method, params = {}) {
-  if (!dbg.has(tabId)) {
-    await chrome.debugger.attach({ tabId }, '1.3').catch((e) => { if (!/already attached/i.test(e.message)) throw e; });
-    dbg.add(tabId);
+// XHR/fetch requests in flight per attached tab: requestId → { at, key }.
+const inflight = new Map();
+chrome.debugger.onDetach.addListener((s) => { dbg.delete(s.tabId); inflight.delete(s.tabId); });
+
+// Things the page did on its own (dialogs it showed), reported with the next tool result.
+const notes = [];
+const note = (s) => { if (notes.length < 10) notes.push(s); };
+const takeNotes = () => (notes.length ? '\n\n' + notes.splice(0).join('\n') : '');
+
+chrome.debugger.onEvent.addListener((src, method, p) => {
+  const tabId = src.tabId;
+  if (method === 'Page.javascriptDialogOpening') {
+    // An open alert/confirm freezes every script on the page, ours included. Accept
+    // it at once (the agent's own action raised it) and tell the model what it said.
+    note(`The page showed a ${p.type} dialog: “${clip(String(p.message || '').trim(), 300)}” — TuffAgent accepted it.`);
+    chrome.debugger.sendCommand(src, 'Page.handleJavaScriptDialog', { accept: true, promptText: p.defaultPrompt || '' }).catch(() => {});
+    return;
   }
+  const reqs = inflight.get(tabId);
+  if (!reqs) return;
+  if (method === 'Network.requestWillBeSent') {
+    if (p.type === 'XHR' || p.type === 'Fetch') reqs.set(p.requestId, { at: performance.now(), key: String(p.request?.url || '').split(/[?#]/)[0] });
+  } else if (method === 'Network.loadingFinished' || method === 'Network.loadingFailed') reqs.delete(p.requestId);
+});
+
+async function attach(tabId) {
+  await chrome.debugger.attach({ tabId }, '1.3').catch((e) => { if (!/already attached/i.test(e.message)) throw e; });
+  dbg.add(tabId);
+  inflight.set(tabId, new Map());
+  // Page events answer dialogs as they open; network events let actions wait for
+  // the requests they started.
+  await Promise.all(['Page.enable', 'Network.enable'].map((m) => chrome.debugger.sendCommand({ tabId }, m).catch(() => {})));
+}
+async function cdp(tabId, method, params = {}) {
+  if (!dbg.has(tabId)) await attach(tabId);
   try {
     return await chrome.debugger.sendCommand({ tabId }, method, params);
   } catch (e) {
     // Detached behind our back (onDetach doesn't fire for our own detach calls): re-attach once.
     if (!/not attached/i.test(e.message)) throw e;
     dbg.delete(tabId);
-    await chrome.debugger.attach({ tabId }, '1.3');
-    dbg.add(tabId);
+    await attach(tabId);
     return chrome.debugger.sendCommand({ tabId }, method, params);
   }
 }
+// Attach before measuring where to click: the first attach shows Chrome's
+// debugging bar, which shrinks the viewport under the coordinates.
+async function ready(tabId) {
+  if (dbg.has(tabId)) return;
+  const first = !dbg.size;
+  await attach(tabId);
+  if (first) await sleep(150);
+}
 async function detach(tabId) {
   dbg.delete(tabId);
+  inflight.delete(tabId);
   await chrome.debugger.detach({ tabId }).catch(() => {});
+}
+// A page call timed out: if a JS dialog is what froze it, answer it.
+async function unblock(tabId) {
+  try {
+    await cdp(tabId, 'Page.enable');
+    await cdp(tabId, 'Page.handleJavaScriptDialog', { accept: true });
+    note('A JS dialog was blocking the page — TuffAgent accepted it.');
+    return true;
+  } catch { return false; }
+}
+
+// After an action, wait for the XHR/fetch requests it started (search results,
+// form posts) to finish, up to a cap. A request that outlives the cap (long
+// poll, stream) is ignored from then on.
+const NET_CAP = 3000;
+const slowUrls = new Map();
+async function netQuiet(tabId, since) {
+  const reqs = inflight.get(tabId);
+  if (!reqs?.size) return false;
+  const skip = slowUrls.get(tabId) || new Set();
+  slowUrls.set(tabId, skip);
+  const now = performance.now();
+  for (const [id, r] of reqs) if (now - r.at > 60000) reqs.delete(id);
+  const pending = () => [...reqs.values()].filter((r) => r.at >= since && !skip.has(r.key));
+  if (!pending().length) return false;
+  const end = now + NET_CAP;
+  while (performance.now() < end) {
+    await sleep(40);
+    if (!pending().length) return true;
+  }
+  for (const r of pending()) skip.add(r.key);
+  return true;
+}
+
+// What the page shows once it has reacted to an action: the DOM goes quiet,
+// then the requests the action started finish, then the DOM goes quiet again.
+// Returns the "New on screen" report.
+async function settleAfter(tabId, t0, quiet = 80, cap = 700) {
+  if (!inflight.has(tabId)) return (await cs(tabId, 'settle', quiet, cap)) || '';
+  await cs(tabId, 'quiet', quiet, cap);
+  if (await netQuiet(tabId, t0)) await cs(tabId, 'quiet', 60, cap);
+  return (await cs(tabId, 'changes')) || '';
 }
 export async function detachAll() {
   await Promise.all([...dbg].map(detach));
@@ -148,6 +263,19 @@ async function cdpKeys(tabId, keys) {
       await cdp(tabId, 'Input.dispatchKeyEvent', down);
       await cdp(tabId, 'Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
     }
+  }
+}
+
+// Type like a person, one key event per character, for fields whose scripts
+// listen to keydown/keyup (autocompletes, input masks, live validation). A
+// character with no key on a US layout is inserted directly.
+async function cdpType(tabId, text) {
+  for (const ch of text) {
+    const k = globalThis.TuffKeys.charKey(ch);
+    if (!k.keyCode) { await cdp(tabId, 'Input.insertText', { text: ch }); continue; }
+    const base = { key: ch, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers: k.shift ? 8 : 0 };
+    await cdp(tabId, 'Input.dispatchKeyEvent', { ...base, type: 'keyDown', text: ch, unmodifiedText: ch });
+    await cdp(tabId, 'Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
   }
 }
 
@@ -176,7 +304,12 @@ async function cdpDrag(tabId, p, modifiers = 0, hold = 0) {
     await mouseEv(tabId, 'mouseMoved', p.x1, p.y1, { modifiers });
     await mouseEv(tabId, 'mousePressed', p.x1, p.y1, { button: 'left', buttons: 1, clickCount: 1, modifiers });
     await sleep(Math.min(Math.max(+hold || 0, 40), 3000));
-    const steps = 12;
+    // A small first move: pointer sortables (dnd-kit, react-beautiful-dnd) only
+    // start dragging past an activation distance, and need a beat to pick up.
+    const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1) || 1;
+    await mouseEv(tabId, 'mouseMoved', p.x1 + (p.x2 - p.x1) / len * 6, p.y1 + (p.y2 - p.y1) / len * 6, { button: 'left', buttons: 1, modifiers });
+    await sleep(50);
+    const steps = Math.max(8, Math.min(30, Math.round(len / 25)));
     const at = (i) => [p.x1 + (p.x2 - p.x1) * i / steps, p.y1 + (p.y2 - p.y1) * i / steps];
     let i = 1;
     for (; i <= steps && !data; i++) {
@@ -185,7 +318,9 @@ async function cdpDrag(tabId, p, modifiers = 0, hold = 0) {
       await sleep(16);
     }
     if (!data) {
-      await sleep(60);
+      // Hover at the destination so the library settles on its drop position.
+      await mouseEv(tabId, 'mouseMoved', p.x2, p.y2, { button: 'left', buttons: 1, modifiers });
+      await sleep(150);
       await mouseEv(tabId, 'mouseReleased', p.x2, p.y2, { button: 'left', buttons: 0, clickCount: 1, modifiers });
       return null;
     }
@@ -247,11 +382,11 @@ async function pasteContent(id, a = {}) {
   const text = a.text != null ? String(a.text) : html ? htmlToText(html) : '';
   if (!text && !html) throw new Error('paste needs text, markdown or html');
   if (!a.clipboard) {
-    const r = await cs(id, 'paste', { ref: a.ref, selector: a.selector, html, text });
+    const r = await cs(id, 'paste', { ref: a.ref, target: a.target, near: a.near, nth: a.nth, selector: a.selector, html, text });
     if (!r) throw new Error('Page is navigating; try again.');
     if (!r.unhandled) return r.text;
   }
-  await cs(id, 'keyPrep', { ref: a.ref });
+  await cs(id, 'keyPrep', { ref: a.ref, target: a.target, near: a.near, nth: a.nth });
   await clipboardPaste(id, html, text);
   return `Pasted ${html ? 'formatted ' : ''}text (${text.length} chars) through the clipboard` + ((await cs(id, 'settle', 80, 900)) || '');
 }
@@ -303,6 +438,71 @@ export function restoreChecklist(messages = []) {
   }
 }
 
+// Items not yet done or failed: the run isn't finished while there are any.
+export const openChecklist = () => checklist.filter((x) => x.status === 'todo');
+
+// ── Tool arguments as models really send them ──
+// Weaker models emit near-JSON: a code fence, a double-encoded string, raw
+// newlines inside strings, trailing commas, or no braces. null if nothing parses.
+export function parseArgs(raw) {
+  const s = String(raw ?? '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+  if (!s) return {};
+  for (const t of [s, repairJson(s), repairJson(`{${s}}`)]) {
+    try {
+      let v = JSON.parse(t);
+      if (typeof v === 'string') v = JSON.parse(v);
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+    } catch {}
+  }
+  return null;
+}
+function repairJson(s) {
+  let out = '', str = false, esc = false;
+  for (const ch of s) {
+    if (str) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') str = false;
+      else if (ch === '\n' || ch === '\r' || ch === '\t') { out += ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : '\\t'; continue; }
+    } else if (ch === '"') str = true;
+    out += ch;
+  }
+  return out.replace(/,\s*([}\]])/g, '$1');
+}
+
+// Names other agents use for these tools, which models trained on them reach for.
+const ALIAS = {
+  click_element: 'click', left_click: 'click', type_text: 'type', input_text: 'type', fill: 'type', fill_field: 'type',
+  press_key: 'key', press: 'key', keypress: 'key', send_keys: 'key', go_to_url: 'navigate', goto: 'navigate', open_url: 'navigate',
+  visit: 'navigate', new_tab: 'tab_open', open_tab: 'tab_open', switch_tab: 'tab_switch', close_tab: 'tab_close',
+  extract_content: 'get_text', get_page_text: 'get_text', read_text: 'get_text', snapshot: 'read_page', get_page: 'read_page',
+  page_snapshot: 'read_page', execute_js: 'run_js', evaluate: 'run_js', javascript: 'run_js', take_screenshot: 'screenshot',
+  select_dropdown_option: 'select_option', scroll_page: 'scroll', go_back: 'navigate', scroll_down: 'scroll', scroll_up: 'scroll',
+};
+// "12", 12, "[e12]", "ref=e12" → "e12".
+const normRef = (v) => {
+  if (v == null || v === '') return v;
+  const s = String(v).trim().replace(/^\[|\]$/g, '').replace(/^ref\s*[:=]\s*/i, '');
+  return /^\d+$/.test(s) ? 'e' + s : s;
+};
+function normalize(name, a) {
+  a = a && typeof a === 'object' ? { ...a } : {};
+  if (name === 'go_back') a.url = 'back';
+  if (name === 'scroll_down' || name === 'scroll_up') a.direction ??= name.slice(7);
+  name = ALIAS[name] || name;
+  if (name !== 'bookmarks' && name !== 'checklist') {
+    a.ref ??= a.element ?? a.element_ref ?? a.ref_id ?? a.index;
+    if (a.ref != null) a.ref = normRef(a.ref);
+    if (a.to_ref != null) a.to_ref = normRef(a.to_ref);
+  }
+  if (name === 'type') a.text ??= a.value ?? a.content ?? a.input;
+  if (name === 'navigate' || name === 'tab_open') a.url ??= a.href ?? a.link;
+  if (name === 'key') a.keys ??= a.key ?? a.combo;
+  if (name === 'tab_close' && a.tab_ids == null && a.tab_id != null) a.tab_ids = [a.tab_id];
+  if (name === 'tab_close' && !Array.isArray(a.tab_ids) && a.tab_ids != null) a.tab_ids = [a.tab_ids];
+  return [name, a];
+}
+
 // ── Helpers ──
 async function resolveTab(a = {}) {
   if (a.tab_id != null) {
@@ -329,19 +529,45 @@ function toUrl(s) {
   return 'https://www.google.com/search?q=' + encodeURIComponent(s);
 }
 
-async function quickSnapshot(tabId, maxChars = 9000) {
+// A new page's content and controls, once it has rendered (apps often draw
+// after DOMContentLoaded), so the model can read and act without a read_page.
+async function quickSnapshot(tabId, maxChars = 10000) {
   try {
-    const s = await cs(tabId, 'snapshot', { mode: 'interactive', maxChars });
+    const s = await cs(tabId, 'snapshot', { mode: 'all', maxChars, wait: true });
     return s ? `\n\nPage now:\n${s}` : '';
   } catch (e) { return `\n\n(${e.message})`; }
 }
 
-// After an input action: if it kicked off a navigation, wait for DOM ready and
-// hand back a fresh snapshot — saves the model a whole round trip.
+// Wait until a tab the page opened has its document (DOMContentLoaded).
+async function tabReady(tabId) {
+  const n = nav.get(tabId);
+  if (n?.pending) return waitNav(tabId);
+  if (n) return;
+  const t = await chrome.tabs.get(tabId).catch(() => null);
+  if (t?.status === 'loading') await loaded(tabId);
+}
+
+// After an input action: if it opened a tab or kicked off a navigation, wait
+// for the new document and hand back a fresh snapshot — saves the model a
+// round trip, and keeps it from acting on a tab it has left.
 async function afterAction(tabId, t0, text) {
+  if (!navStartedSince(tabId, t0)) await sleep(0);
+  const born = opened.filter((o) => o.at >= t0 && o.id !== tabId && (o.opener === tabId || o.windowId === agent.windowId));
+  if (born.length) {
+    for (const o of born) opened.splice(opened.indexOf(o), 1);
+    const o = born[born.length - 1];
+    await tabReady(o.id);
+    const t = await chrome.tabs.get(o.id).catch(() => null);
+    if (t) {
+      if (!t.active) return `${text}\nOpened a background tab [${t.id}] ${t.title || ''} — ${t.url || t.pendingUrl || ''} (tab_switch to use it).`;
+      agent.tabId = t.id;
+      return `${text}\nOpened a new tab [${t.id}] ${t.title || ''} — ${t.url || t.pendingUrl || ''} (now the current tab; the old one is [${tabId}]).` +
+        (await quickSnapshot(t.id));
+    }
+  }
   if (!navStartedSince(tabId, t0)) {
-    await sleep(0);
-    if (!navStartedSince(tabId, t0)) return text;
+    const spa = nav.get(tabId)?.spa;
+    return spa && spa.at >= t0 ? `${text}\nURL changed → ${spa.url}` : text;
   }
   await waitNav(tabId);
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -368,6 +594,11 @@ const ago = (ms) => {
 // ── Tool schema (kept terse: every token here is latency) ──
 const ref = { type: 'string', description: 'Element ref from read_page/find, e.g. "e12"' };
 const tabId = { type: 'integer', description: 'Target tab (default: current tab)' };
+// Every element tool can aim by label instead of ref.
+const target = { type: 'string', description: 'Instead of ref: the element\'s visible label, e.g. "Add to cart"' };
+const near = { type: 'string', description: 'With target: pick the match nearest this text (same row, card or list item), e.g. a product or person name' };
+const nth = { type: 'integer', description: 'With target: which of several equal matches, in page order (1 = first)' };
+const aimBy = { ref, target, near, nth };
 const fn = (name, description, properties = {}, required = []) => ({
   type: 'function',
   function: { name, description, parameters: { type: 'object', properties, required } },
@@ -375,7 +606,7 @@ const fn = (name, description, properties = {}, required = []) => ({
 
 export const TOOLS = [
   fn('tabs_list', 'List open tabs across windows with ids, titles, URLs.'),
-  fn('tab_open', 'Open a new tab. Returns its id and an interactive snapshot.', {
+  fn('tab_open', 'Open a new tab. Returns its id and a snapshot of the page.', {
     url: { type: 'string', description: 'URL or search terms' },
     active: { type: 'boolean', description: 'Focus it and make it the current tab (default true)' },
   }, ['url']),
@@ -388,53 +619,57 @@ export const TOOLS = [
     collapsed: { type: 'boolean' },
     ungroup: { type: 'boolean' },
   }, ['tab_ids']),
-  fn('navigate', 'Navigate the current tab. Returns an interactive snapshot of the new page.', {
+  fn('navigate', 'Navigate the current tab. Returns a snapshot of the new page (text and controls).', {
     url: { type: 'string', description: 'URL, search terms, or "back" / "forward" / "reload"' },
     tab_id: tabId,
   }, ['url']),
-  fn('read_page', 'Snapshot of the page: interactive elements with refs (plus headings/text in mode=all). "·off" = outside viewport.', {
-    mode: { type: 'string', enum: ['interactive', 'all'], description: 'default interactive' },
+  fn('read_page', 'Snapshot of the page in reading order: text, headings, table rows, and interactive elements with refs. Long pages keep what is on screen first. "·off" = outside viewport.', {
+    mode: { type: 'string', enum: ['all', 'interactive'], description: 'all (default): text and controls; interactive: controls only' },
     viewport_only: { type: 'boolean' },
     tab_id: tabId,
   }),
-  fn('get_text', 'Plain text content of the page (for reading/summarizing).', {
+  fn('get_text', 'Plain text of the page (reading/summarizing). With query: only the lines that mention it, with context — fastest way to find a fact on a long page.', {
+    query: { type: 'string', description: 'Words to look for' },
     selector: { type: 'string', description: 'Limit to an element' },
     max_chars: { type: 'integer' },
     tab_id: tabId,
   }),
   fn('find', 'Find elements by visible text/label. Returns refs. Query with the label words themselves ("Playfair Display"), not a description.', { query: { type: 'string' }, tab_id: tabId }, ['query']),
-  fn('click', 'Click by ref (preferred), CSS selector, or viewport x/y (only for canvas content with no ref). Result lists elements that newly appeared (menus, dialogs) with refs.', {
-    ref, selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
+  fn('click', 'Click an element by ref, or by its visible label (target, plus near/nth to pick among repeats), or a CSS selector. x/y only for canvas content with no element; it snaps to the control at that point. Result lists what appeared or changed (menus, dialogs, messages) with refs.', {
+    ...aimBy, selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
     clicks: { type: 'integer', description: '2 = double-click, 3 = triple-click (selects a paragraph)' },
-    modifiers: { type: 'string', description: 'Held keys, e.g. "shift" to extend a selection' }, tab_id: tabId,
+    modifiers: { type: 'string', description: 'Held keys, e.g. "shift" to extend a selection, "meta" to open a link in a background tab' }, tab_id: tabId,
   }),
-  fn('type', 'Type text in one go. With ref: into that field, replacing its text unless clear=false. Without ref: at the current caret/focus without clearing (rich editors like Google Docs — click into them first).', {
-    ref, selector: { type: 'string' }, text: { type: 'string' },
+  fn('type', 'Type text in one go. Into a field (ref or target), replacing its text unless clear=false; without one, at the current caret/focus without clearing (rich editors like Google Docs — click into them first). Date/time inputs take their value format (2025-03-14, 13:30); a <select> picks the matching option.', {
+    ...aimBy, selector: { type: 'string' }, text: { type: 'string' },
     clear: { type: 'boolean' }, submit: { type: 'boolean', description: 'Press Enter after' }, tab_id: tabId,
   }, ['text']),
-  fn('key', 'Press keys on the focused element. Space-separated combos; "*N" repeats, e.g. "Enter", "Meta+a Backspace", "Shift+ArrowRight*5", "ArrowDown*3 Enter". Use type for text.', {
-    keys: { type: 'string' }, ref, tab_id: tabId,
+  fn('key', 'Press keys on the focused element (or ref/target first). Space-separated combos; "*N" repeats, e.g. "Enter", "Meta+a Backspace", "Shift+ArrowRight*5", "ArrowDown*3 Enter". Use type for text.', {
+    keys: { type: 'string' }, ...aimBy, tab_id: tabId,
   }, ['keys']),
-  fn('paste', 'Paste text, markdown or HTML at the caret (or into ref) in one step, keeping formatting: headings, lists, links, bold, tables (markdown "||" merges a cell into the previous one), images by URL. Best way to put long or formatted text into rich editors.', {
-    markdown: { type: 'string' }, html: { type: 'string' }, text: { type: 'string', description: 'Plain text' }, ref,
+  fn('paste', 'Paste text, markdown or HTML at the caret (or into ref/target) in one step, keeping formatting: headings, lists, links, bold, tables (markdown "||" merges a cell into the previous one), images by URL. Best way to put long or formatted text into rich editors.', {
+    markdown: { type: 'string' }, html: { type: 'string' }, text: { type: 'string', description: 'Plain text' }, ...aimBy,
     clipboard: { type: 'boolean', description: 'Force the real clipboard + paste shortcut' }, tab_id: tabId,
   }),
   fn('menu', 'Click through a menu path by visible labels in one call, e.g. ["Format","Paragraph styles","Title"]. Opens menus and submenus in order; returns what is on screen after the last click.', {
     path: { type: 'array', items: { type: 'string' } }, tab_id: tabId,
   }, ['path']),
-  fn('drag', 'Drag from ref or x/y to to_ref or to_x/to_y. Handles drag-and-drop (kanban cards, sortable lists, file trees, draggable items) as well as plain mouse drags: selecting text or table cells, sliders, resizing, panning.', {
-    ref, x: { type: 'number' }, y: { type: 'number' }, to_ref: { type: 'string' }, to_x: { type: 'number' }, to_y: { type: 'number' },
-    to_position: { type: 'string', enum: ['center', 'top', 'bottom', 'left', 'right'], description: 'Where on to_ref to drop (default center). top/bottom drops before/after an item in a list.' },
+  fn('drag', 'Drag an element (ref/target, or x/y) to another (to_ref/to_target), a point (to_x/to_y), or by an offset (dx/dy: sliders, resizing, panning). Real drag-and-drop for kanban cards, sortable lists, file trees; also plain mouse drags to select text or table cells. Reports whether the item moved.', {
+    ...aimBy, x: { type: 'number' }, y: { type: 'number' },
+    to_ref: { type: 'string' }, to_target: { type: 'string', description: 'Destination\'s visible label (a column title, list item, drop zone)' },
+    to_near: { type: 'string', description: 'With to_target: the match nearest this text' },
+    to_x: { type: 'number' }, to_y: { type: 'number' }, dx: { type: 'number' }, dy: { type: 'number' },
+    to_position: { type: 'string', enum: ['center', 'top', 'bottom', 'left', 'right'], description: 'Where on the destination to drop (default center). top/bottom drops before/after an item in a list.' },
     hold: { type: 'integer', description: 'Ms to hold the press before moving, for long-press-to-drag UIs' },
     modifiers: { type: 'string' }, tab_id: tabId,
   }),
-  fn('scroll', 'Scroll the page (or the scrollable area under center), or bring a ref into view.', {
+  fn('scroll', 'Scroll the page (or the scrollable area under center); the result shows what is on screen after. ref/target alone brings it into view; with direction scrolls inside that element (lists, sidebars, dialogs).', {
     direction: { type: 'string', enum: ['down', 'up', 'top', 'bottom', 'left', 'right'] },
     amount: { type: 'integer', description: 'Pixels (default ~1 screen)' },
-    ref, tab_id: tabId,
+    ...aimBy, tab_id: tabId,
   }),
-  fn('hover', 'Hover an element (menus, tooltips).', { ref, tab_id: tabId }, ['ref']),
-  fn('select_option', 'Choose an option in a native <select>.', { ref, value: { type: 'string', description: 'Option value or label' }, tab_id: tabId }, ['ref', 'value']),
+  fn('hover', 'Hover an element (menus, tooltips).', { ...aimBy, x: { type: 'number' }, y: { type: 'number' }, tab_id: tabId }),
+  fn('select_option', 'Choose an option in a native <select> (ref/target is the select or its label).', { ...aimBy, value: { type: 'string', description: 'Option value or label' }, tab_id: tabId }, ['value']),
   fn('screenshot', 'Capture the viewport. Clickable elements are boxed and tagged with their refs (listed in the result) — click those by ref. Edge rulers mark every 100px for x/y.', {
     labels: { type: 'boolean', description: 'Ref tags and rulers (default true)' }, tab_id: tabId,
   }),
@@ -455,8 +690,8 @@ export const TOOLS = [
     set: { type: 'array', items: { type: 'string' }, description: 'One "id: requirement" per item' },
     done: { type: 'array', items: { type: 'string' } }, failed: { type: 'array', items: { type: 'string' } }, note: { type: 'string' },
   }),
-  fn('wait', 'Wait for text/selector to appear (preferred) or a fixed time.', {
-    text: { type: 'string' }, selector: { type: 'string' }, ms: { type: 'integer', description: 'Fixed wait, max 5000' },
+  fn('wait', 'Wait for text/selector to appear (or disappear with gone=true, e.g. a spinner or "Loading"), or a fixed time.', {
+    text: { type: 'string' }, selector: { type: 'string' }, gone: { type: 'boolean' }, ms: { type: 'integer', description: 'Fixed wait, max 5000' },
     timeout_ms: { type: 'integer' }, tab_id: tabId,
   }),
 ];
@@ -470,6 +705,8 @@ export const toolsFor = (vision, packIds = []) => [
 // Short label while a tool runs.
 export function preLabel(name, a = {}) {
   const q = (s) => `“${clip(String(s ?? ''), 40)}”`;
+  [name, a] = normalize(name, a);
+  const at = a.target ? ` ${q(a.target)}` : '';
   switch (name) {
     case 'tabs_list': return 'Checking tabs';
     case 'tab_open': return `Opening ${hostOf(toUrl(a.url))}`;
@@ -480,12 +717,12 @@ export function preLabel(name, a = {}) {
     case 'read_page': return 'Reading page';
     case 'get_text': return 'Reading text';
     case 'find': return `Finding ${q(a.query)}`;
-    case 'click': return 'Clicking';
+    case 'click': return `Clicking${at}`;
     case 'type': return `Typing ${q(a.text)}`;
-    case 'drag': return 'Dragging';
+    case 'drag': return `Dragging${at}${a.to_target ? ` to ${q(a.to_target)}` : ''}`;
     case 'key': return `Pressing ${a.keys}`;
-    case 'scroll': return a.ref ? 'Scrolling into view' : `Scrolling ${a.direction || 'down'}`;
-    case 'hover': return 'Hovering';
+    case 'scroll': return (a.ref || a.target) && !a.direction ? 'Scrolling into view' : `Scrolling ${a.direction || 'down'}`;
+    case 'hover': return `Hovering${at}`;
     case 'select_option': return `Selecting ${q(a.value)}`;
     case 'screenshot': return 'Taking screenshot';
     case 'run_js': return 'Running JavaScript';
@@ -501,6 +738,15 @@ export function preLabel(name, a = {}) {
 
 // ── Execution ──
 export async function exec(name, a = {}) {
+  [name, a] = normalize(name, a);
+  const r = await run(name, a);
+  // Dialogs the page raised along the way.
+  const said = takeNotes();
+  if (said) r.text = (r.text || '') + said;
+  return r;
+}
+
+async function run(name, a) {
   const t0 = performance.now();
   switch (name) {
     case 'tabs_list': {
@@ -580,14 +826,14 @@ export async function exec(name, a = {}) {
 
     case 'read_page': {
       const id = await resolveTab(a);
-      const s = await cs(id, 'snapshot', { mode: a.mode || 'interactive', viewportOnly: !!a.viewport_only });
+      const s = await cs(id, 'snapshot', { mode: a.mode || 'all', viewportOnly: !!a.viewport_only, wait: true });
       const tab = await chrome.tabs.get(id);
       return { text: s ?? 'Page is navigating; try again.', label: `Read ${hostOf(tab.url)}` };
     }
 
     case 'get_text': {
       const id = await resolveTab(a);
-      const s = await cs(id, 'text', { maxChars: a.max_chars || 15000, selector: a.selector });
+      const s = await cs(id, 'text', { maxChars: a.max_chars || 15000, selector: a.selector, query: a.query });
       const tab = await chrome.tabs.get(id);
       return { text: s ?? 'Page is navigating; try again.', label: `Read text of ${hostOf(tab.url)}` };
     }
@@ -603,25 +849,34 @@ export async function exec(name, a = {}) {
       const id = await resolveTab(a);
       let text;
       if (agent.trusted) {
+        await ready(id);
         const p = await cs(id, 'point', a);
         if (!p) throw new Error('Page is navigating; try again.');
-        await cdpClick(id, p.x, p.y, Math.max(1, Math.min(3, +a.clicks || (a.double ? 2 : 1))), mouseMods(a.modifiers));
-        text = `Clicked ${p.desc}` + ((await cs(id, 'settle')) || '');
+        if (p.covered) {
+          // Every spot of the element is under something else (a banner, an overlay):
+          // a real click would land on that, so send the click to the element itself.
+          text = await cs(id, 'click', a) ?? 'Clicked (page navigated)';
+        } else {
+          await cdpClick(id, p.x, p.y, Math.max(1, Math.min(3, +a.clicks || (a.double ? 2 : 1))), mouseMods(a.modifiers));
+          text = `Clicked ${p.desc}` + await settleAfter(id, t0);
+        }
       } else {
         text = (await cs(id, 'click', a)) ?? 'Clicked (page navigated)';
       }
-      return { text: await afterAction(id, t0, text), label: firstLine(text).replace(/ \(warning.*$/, '') };
+      return { text: await afterAction(id, t0, text), label: firstLine(text).replace(/ \((warning|\d+ matches).*$/, '') };
     }
 
     case 'drag': {
       const id = await resolveTab(a);
       let text;
       if (agent.trusted) {
+        await ready(id);
         const p = await cs(id, 'dragPoints', a);
         if (!p) throw new Error('Page is navigating; try again.');
         const how = await cdpDrag(id, p, mouseMods(a.modifiers), a.hold);
         const note = how === 'dropped' ? ' (drag-and-drop: dropped)' : how === 'refused' ? ' (drag-and-drop: target did not accept the drop)' : '';
-        text = `Dragged ${p.desc}${note}` + ((await cs(id, 'settle')) || '');
+        const diff = await settleAfter(id, t0, 100, 900);
+        text = `Dragged ${p.desc}${note}${(await cs(id, 'dragCheck')) || ''}` + diff;
       } else text = (await cs(id, 'drag', a)) ?? 'Dragged (page navigated)';
       return { text: await afterAction(id, t0, text), label: firstLine(text) };
     }
@@ -630,18 +885,34 @@ export async function exec(name, a = {}) {
       const id = await resolveTab(a);
       let text;
       if (agent.trusted) {
+        await ready(id);
         const f = await cs(id, 'prepField', a);
         if (!f) throw new Error('Page is navigating; try again.');
-        // insertText replaces the selection, so Backspace is only for clearing to empty.
-        // Rich editors get Enter between lines (a raw "\n" may not make a paragraph).
-        const parts = f.plain ? [String(a.text)] : String(a.text).split('\n');
-        for (let i = 0; i < parts.length; i++) {
-          if (i) await cdpKeys(id, 'Enter');
-          if (parts[i]) await cdp(id, 'Input.insertText', { text: parts[i] });
+        const s = String(a.text ?? '');
+        if (f.kind === 'select') return run('select_option', { ...a, ref: f.ref, target: undefined, value: s });
+        let check = '';
+        if (f.kind === 'value') text = await cs(id, 'setValue', { value: s });
+        else {
+          if (f.plain && s && s.length <= 80 && !s.includes('\n')) {
+            // Short text in a plain field goes in key by key, so autocompletes and
+            // masks that listen for key events react as they would to a person.
+            await cdpType(id, s);
+          } else {
+            // insertText replaces the selection, so Backspace is only for clearing to empty.
+            // Rich editors get Enter between lines (a raw "\n" may not make a paragraph).
+            const parts = f.plain ? [s] : s.split('\n');
+            for (let i = 0; i < parts.length; i++) {
+              if (i) await cdpKeys(id, 'Enter');
+              if (parts[i]) await cdp(id, 'Input.insertText', { text: parts[i] });
+            }
+          }
+          if (!s && f.cleared) await cdpKeys(id, 'Backspace');
+          if (f.plain && !a.submit) check = (await cs(id, 'fieldCheck', s)) || '';
+          if (a.submit) await cdpKeys(id, 'Enter');
+          text = `Typed "${clip(s, 60)}" into ${f.desc}${a.submit ? ' and pressed Enter' : ''}${check}`;
         }
-        if (!a.text && f.cleared) await cdpKeys(id, 'Backspace');
-        if (a.submit) await cdpKeys(id, 'Enter');
-        text = `Typed "${clip(String(a.text), 60)}" into ${f.desc}${a.submit ? ' and pressed Enter' : ''}` + ((await cs(id, 'settle')) || '');
+        // Suggestion lists (search boxes, address and city pickers) take a moment to show.
+        text += await settleAfter(id, t0, f.suggest ? 200 : 80, f.suggest ? 1500 : 700);
       } else {
         text = (await cs(id, 'type', a)) ?? 'Typed (page navigated)';
       }
@@ -652,9 +923,10 @@ export async function exec(name, a = {}) {
       const id = await resolveTab(a);
       let text;
       if (agent.trusted) {
-        await cs(id, 'keyPrep', { ref: a.ref });
+        await ready(id);
+        await cs(id, 'keyPrep', { ref: a.ref, target: a.target, near: a.near, nth: a.nth });
         await cdpKeys(id, String(a.keys));
-        text = `Pressed ${String(a.keys).trim()}` + ((await cs(id, 'settle')) || '');
+        text = `Pressed ${String(a.keys).trim()}` + await settleAfter(id, t0);
       } else text = (await cs(id, 'key', a)) ?? `Pressed ${a.keys}`;
       return { text: await afterAction(id, t0, text), label: clip(firstLine(text), 80) };
     }
@@ -662,17 +934,19 @@ export async function exec(name, a = {}) {
     case 'scroll': {
       const id = await resolveTab(a);
       const s = await cs(id, 'scroll', a);
-      return { text: s, label: a.ref ? firstLine(s) : `Scrolled ${a.direction || 'down'}` };
+      if (s == null) throw new Error('Page is navigating; try again.');
+      return { text: s, label: firstLine(s).replace(/;.*$/, '') };
     }
 
     case 'hover': {
       const id = await resolveTab(a);
       let s;
       if (agent.trusted) {
+        await ready(id);
         const p = await cs(id, 'point', { ...a, hover: true });
         if (!p) throw new Error('Page is navigating; try again.');
         await mouseEv(id, 'mouseMoved', p.x, p.y, {});
-        s = `Hovered ${p.desc}` + ((await cs(id, 'settle')) || '');
+        s = `Hovered ${p.desc}` + await settleAfter(id, t0);
       } else s = await cs(id, 'hover', a);
       return { text: s, label: firstLine(s) };
     }
@@ -807,6 +1081,7 @@ export async function exec(name, a = {}) {
 
     case 'menu': {
       const id = await resolveTab(a);
+      if (agent.trusted) await ready(id);
       const path = (Array.isArray(a.path) ? a.path : String(a.path || '').split(/\s*[>›]\s*/)).map(String).filter(Boolean);
       if (!path.length) throw new Error('menu needs a path');
       let diff = '';
@@ -824,7 +1099,7 @@ export async function exec(name, a = {}) {
           await cdpClick(id, p.x, p.y);
         } else await cs(id, 'click', { ref: p.ref });
         // Submenus open on hover/click; wait until the DOM settles before the next label.
-        diff = (await cs(id, 'settle', 60, i === path.length - 1 ? 700 : 450)) || '';
+        diff = i === path.length - 1 ? await settleAfter(id, t0, 60, 700) : (await cs(id, 'settle', 60, 450)) || '';
       }
       const text = `Clicked ${path.join(' › ')}` + diff;
       return { text: await afterAction(id, t0, text), label: `Clicked ${clip(path.join(' › '), 70)}` };
@@ -839,7 +1114,7 @@ export async function exec(name, a = {}) {
     case 'wait': {
       if (a.text || a.selector) {
         const id = await resolveTab(a);
-        const s = await cs(id, 'waitFor', { text: a.text, selector: a.selector, timeout: a.timeout_ms || 5000 });
+        const s = await cs(id, 'waitFor', { text: a.text, selector: a.selector, gone: !!a.gone, timeout: a.timeout_ms || 5000 });
         return { text: s, label: s };
       }
       const ms = Math.min(+a.ms || 500, 5000);

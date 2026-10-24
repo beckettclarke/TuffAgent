@@ -1,4 +1,4 @@
-import { agent, exec, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, TOOLS } from './tools.js';
+import { agent, exec, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, openChecklist, parseArgs, TOOLS } from './tools.js';
 import { PACKS, packsForUrl } from './sites/index.js';
 import { complete, checkKey, listModels } from './llm.js';
 import { md } from './md.js';
@@ -9,8 +9,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 const DEFAULTS = {
   apiKey: '', model: 'anthropic/claude-haiku-5.5', reasoning: 'auto', fast: true, overlay: true,
-  trusted: true, maxSteps: 40, unlimited: false, instructions: '', recent: [], v: 2,
+  trusted: true, maxSteps: 100, unlimited: false, instructions: '', recent: [], v: 3,
 };
+// Retries per model call (rate limits, overloaded providers, dropped streams).
+const RETRIES = 5;
 const FEATURED = ['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'openai/gpt-5.6-luna',
   'openai/gpt-5.6-terra', 'google/gemini-3.8-flash', 'x-ai/grok-4.7', 'moonshotai/kimi-k3', 'qwen/qwen3.8-flash'];
 const PROVIDER_HUE = { anthropic: '#d97757', openai: '#10a37f', google: '#4285f4', 'x-ai': '#8b8b93', qwen: '#7c5cff', moonshotai: '#1f6feb',
@@ -24,6 +26,9 @@ let ctrl = null;
 let runEnded = Promise.resolve();
 // Cache breakpoint on the newest (tool) message; switched off if a provider rejects it.
 let cacheTail = true;
+// How hard buildMessages trims history: raised when a request overflows the
+// model's context window, reset when a new run starts.
+let squeeze = 0;
 const MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform);
 // Current chat: messages above, plus a debug log of every run.
 let chatId = null;
@@ -34,7 +39,9 @@ let chatPacks = new Set();
 
 const save = () => chrome.storage.local.set({ settings: S });
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const firstUser = (msgs) => msgs.find((m) => m.role === 'user' && !m._img);
+// User turns the person typed (not screenshots or the agent's own nudges).
+const typed = (m) => m.role === 'user' && !m._img && !m._hidden;
+const firstUser = (msgs) => msgs.find(typed);
 const chatTitle = (msgs) => { const u = firstUser(msgs); return String(u?._display ?? u?.content ?? 'New chat').replace(/\s+/g, ' ').slice(0, 90); };
 
 async function saveThread() {
@@ -233,6 +240,15 @@ class Turn {
         if (!msg.content && textEl) textEl.remove();
         return (msg.tool_calls || []).map((tc, i) => this.stepAt(i, tc.function.name));
       },
+      // A failed attempt that will be retried: take its partial output off screen.
+      discard() {
+        if (rafT) cancelAnimationFrame(rafT), rafT = 0;
+        thinkEl?.remove(); textEl?.remove();
+        for (const s of pending.values()) s.el.remove();
+        if (t.steps && !t.steps.children.length) { t.steps.remove(); t.steps = null; }
+        thinkEl = textEl = null;
+        pending.clear();
+      },
     };
   }
 
@@ -298,7 +314,7 @@ function replay() {
   const results = new Map(messages.filter((m) => m.role === 'tool').map((m) => [m.tool_call_id, m]));
   let turn = null;
   for (const m of messages) {
-    if (m.role === 'user' && !m._img) { userBubble(m._display ?? m.content); turn = null; continue; }
+    if (typed(m)) { userBubble(m._display ?? m.content); turn = null; continue; }
     if (m.role !== 'assistant') continue;
     turn ||= new Turn();
     turn.root.style.animation = 'none';
@@ -329,12 +345,14 @@ Date: ${new Date().toDateString()}. Platform: ${MAC ? 'macOS — shortcuts use M
 How to work:
 - Act, don't narrate. Do the task with tools; only ask when genuinely blocked or before risky actions.
 - Speed matters: every response costs a model round trip, so do as much as you can per response. When the next steps are predictable, emit several tool calls in one response (e.g. type into each field, then click submit, or a batch of independent edits) — they run in order. One tool call per response is the slow path.
-- Element refs (e.g. e12) come from read_page/find. Prefer refs over selectors or coordinates. Refs go stale after navigation.
-- navigate and tab_open already return a snapshot of the new page, and actions that trigger navigation return one too — don't call read_page right after them.
-- click/type/key/hover results list what newly appeared on screen ("New on screen": menus, submenus, dialogs, suggestions) with refs. Use those refs directly in your next calls — no read_page or find needed. Chain through menus in one response when you know the item names.
+- Snapshots list the page in reading order: text, headings, table rows ("| a | b |") and controls with refs ("[e12] button …"); links inside text appear as [text](e12). navigate, tab_open and actions that load a page return one — read it instead of calling read_page. Lines marked ·off are outside the viewport; "not shown" lines were cut for length.
+- Aim with a ref (e12), or with target = the element's visible label ("Add to cart"); when a label repeats, add near = text in the same row or card ("Order #1234") or nth. Never guess coordinates for elements that have a ref or a label. Refs go stale after navigation; labels don't.
+- Action results report what appeared or changed ("New on screen", "Changed", "New text": menus, dialogs, suggestions, errors, toasts) with refs. Act on those directly — no read_page or find needed. Chain through menus in one response when you know the item names.
+- Links that open a new tab switch the current tab to it (the result says so). Page alerts and confirms are accepted automatically and reported.
 - Long or formatted text: paste (markdown or HTML) instead of type — headings, lists, tables and links in one call.
 - Menus: menu with the visible labels (["Insert","Table"]) clicks through menu, submenu and item in one call.
-- Use get_text to read or summarize content, read_page to act, find to locate one thing on a big page, run_js for bulk extraction or anything tools can't do.${modelInfo()?.vision === false ? '' : `
+- To find a fact on a long page, get_text with query (the lines that mention it). get_text to read or summarize, find to locate an element, run_js for bulk extraction or anything tools can't do.
+- Go straight to URLs when you can build them: a site's search results (https://www.google.com/search?q=…, https://en.wikipedia.org/w/index.php?search=…, https://github.com/search?q=…, or the site's own ?q= pattern), a known page, sorted or filtered listings. Clear cookie banners and popups that cover the page.${modelInfo()?.vision === false ? '' : `
 - Use screenshot when visual layout matters, the snapshot is confusing, or content is drawn on a canvas (Google Docs/Sheets text). Screenshots tag clickable elements with their refs — click those by ref, never by guessed coordinates. Use x/y only for canvas content, reading positions off the 100px edge rulers. To see the result of actions, end that same response with a screenshot call instead of spending a separate round.`}
 - Text goes in with one type call, never key-by-key. In rich editors (Google Docs etc.), click where the text goes, then type without ref (types at the caret); use key Enter for new paragraphs.
 - key takes repeats ("Shift+ArrowRight*12"). Select ranges with drag, a triple click (clicks: 3), or click then click again with modifiers: "shift".
@@ -346,20 +364,24 @@ How to work:
 - If something fails, adapt (re-read the page, try another element, scroll) instead of repeating the same call. When a call fails, the remaining calls in that response are skipped, so re-plan from the error. After two failures on the same approach, switch approach (a dedicated tool, paste, menu search, run_js), or skip the item and come back to it.
 - Finish the job. Don't stop with requirements left because a step is slow or fiddly; skip a stuck item, do the rest, then come back to it. Stop early only when truly blocked (sign-in, permission, missing information), and then say exactly what is left.
 - Before irreversible or sensitive actions — purchases, sending messages or emails, posting publicly, deleting data, entering payment info or passwords — stop and ask the user to confirm, unless they explicitly asked for exactly that.
+- Before answering, check the result against every part of the request (dates, counts, filters, sort order, which item). When asked for information, give the exact values as the page shows them (numbers, names, dates, prices) and where they came from.
 - Finish with a short answer or summary in markdown. No preamble.${activePacks().map((p) => `\n\n${p.prompt}`).join('')}${S.instructions.trim() ? `\n\nUser's custom instructions:\n${S.instructions.trim()}` : ''}`;
 }
 
 // Tool results are trimmed by age. The cut-off points move in steps of 10
 // results, so earlier messages stay byte-identical between rounds and provider
-// prompt caches keep hitting.
+// prompt caches keep hitting. After a context overflow (squeeze 1–3) fewer
+// results stay whole and the steps get finer.
+const KEEP_FULL = [6, 4, 2, 1], FULL_STEP = [10, 10, 5, 1], KEEP_MID = [40, 20, 10, 4], MID_CAP = [1200, 900, 600, 300];
 function buildMessages() {
   const isAnthropic = S.model.includes('anthropic/');
-  const lastUser = messages.findLastIndex((m) => m.role === 'user' && !m._img);
+  const lastUser = messages.findLastIndex(typed);
   const lastImg = messages.findLastIndex((m) => m._img);
   const toolOrd = new Map();
   messages.forEach((m, i) => { if (m.role === 'tool') toolOrd.set(i, toolOrd.size); });
-  const fullFrom = Math.max(0, Math.floor((toolOrd.size - 6) / 10) * 10);
-  const briefFrom = Math.max(0, Math.floor((toolOrd.size - 40) / 20) * 20);
+  const step = FULL_STEP[squeeze];
+  const fullFrom = Math.max(0, Math.floor((toolOrd.size - KEEP_FULL[squeeze]) / step) * step);
+  const briefFrom = Math.max(0, Math.floor((toolOrd.size - KEEP_MID[squeeze]) / 20) * 20);
   // Old reasoning is most of the context on long runs (and invites the model to
   // re-argue settled steps). Drop plain reasoning text before the same cut-off as
   // tool results so the cache breaks at the same moment; signed or encrypted
@@ -375,10 +397,10 @@ function buildMessages() {
     }
     if (m.role === 'tool' && typeof c.content === 'string') {
       const n = toolOrd.get(i);
-      const cap = i < lastUser || n < briefFrom ? 300 : n < fullFrom ? 1200 : Infinity;
+      const cap = i < lastUser || n < briefFrom ? 300 : n < fullFrom ? MID_CAP[squeeze] : Infinity;
       if (c.content.length > cap) c.content = c.content.slice(0, cap) + '\n…[trimmed]';
     }
-    if (m._img && i !== lastImg) c.content = '[earlier screenshot omitted]';
+    if (m._img && (i !== lastImg || squeeze >= 2)) c.content = '[earlier screenshot omitted]';
     return c;
   });
   if (isAnthropic) {
@@ -407,7 +429,10 @@ function requestBody() {
     tools: toolsFor(info ? info.vision : true, [...chatPacks]),
     tool_choice: 'auto',
     parallel_tool_calls: true,
-    max_tokens: 8192,
+    // Room for reasoning plus a long paste or a batch of calls: some providers
+    // turn reasoning effort into a share of max_tokens, which left too little
+    // at 8k. Not more, since that share is also how long the model may think.
+    max_tokens: info?.maxOut ? Math.min(info.maxOut, 16000) : 8192,
     usage: { include: true },
   };
   // Agent turns are short (a few tool calls), so time to first token decides the
@@ -450,10 +475,22 @@ async function run() {
   const t0 = performance.now();
   liveTotals(true);
   let steps = 0, cost = 0, tokens = 0, lastAssistant = null, hitLimit = true, stopped = false;
+  // Recoveries left this run: retried model calls, and nudges back to work
+  // (cut-off replies, quitting with checklist items open).
+  let recoveries = 12, nudges = 3, nudgedFor = '';
+  // Recent calls, to notice the model repeating one that keeps giving the same result.
+  const recent = [];
+  squeeze = 0;
   const limit = S.unlimited ? Infinity : S.maxSteps;
   log('run', {
-    prompt: messages.findLast((m) => m.role === 'user' && !m._img)?._display, model: S.model,
+    prompt: messages.findLast(typed)?._display, model: S.model, version: chrome.runtime.getManifest().version,
     settings: { reasoning: S.reasoning, fast: S.fast, trusted: S.trusted, overlay: S.overlay, maxSteps: S.unlimited ? 'unlimited' : S.maxSteps },
+  });
+  const nudge = (text) => { messages.push({ role: 'user', content: text, _hidden: true }); nudges--; };
+  // Abortable pause between retries.
+  const pause = (ms) => new Promise((r) => {
+    const t = setTimeout(r, ms);
+    signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
   });
 
   try {
@@ -461,14 +498,14 @@ async function run() {
       turn.waiting(i === 0 ? 'Thinking' : 'Working');
       // Offer a site's tools once its page is open (and keep them for the rest of the chat).
       for (const p of packsForUrl((await currentTabInfo())?.url)) chatPacks.add(p.id);
-      const view = turn.response();
+      let view = turn.response();
       // Each tool call starts as soon as its arguments finish streaming, so the
       // browser works while the model is still writing the next call. Calls run
       // strictly in order.
       const calls = [], results = [], images = [];
       // The calls in one response are a plan; once one fails, the rest act on a
       // page that isn't what the model expected (typing into the wrong place).
-      let chain = Promise.resolve(), started = 0, failed = null;
+      let chain = Promise.resolve(), started = 0, failed = null, cutOff = false;
       const parses = (tc) => { try { JSON.parse(tc.function.arguments?.trim() || '{}'); return true; } catch { return false; } };
       const pump = (final) => {
         while (started < calls.length && calls[started] && (final || parses(calls[started]))) {
@@ -489,13 +526,15 @@ async function run() {
           sv.done(false, { label: 'Skipped' });
           return;
         }
-        let args = null;
-        try { args = tc.function.arguments?.trim() ? JSON.parse(tc.function.arguments) : {}; } catch {}
+        const args = parseArgs(tc.function.arguments);
         sv.label(preLabel(name, args || {}));
         const s0 = performance.now();
         let content, label, ok = true, image;
         try {
-          if (!args) throw new Error(`Invalid JSON arguments: ${tc.function.arguments?.slice(0, 200)}`);
+          if (!args) {
+            throw new Error(`Invalid JSON arguments: ${tc.function.arguments?.slice(0, 200)}` +
+              (cutOff ? ' — your response hit the output token limit mid-call. Send long content in smaller pieces.' : ''));
+          }
           const r = await exec(name, args);
           content = r.text; label = r.label; image = r.image;
         } catch (e) {
@@ -506,41 +545,75 @@ async function run() {
         }
         const ms = performance.now() - s0;
         sv.done(ok, { label, args, result: content, ms, image });
+        // Same call, same result, again: the model is stuck in a loop. Say so (to the
+        // model only) so it changes approach instead of burning rounds.
+        const sig = name + ' ' + JSON.stringify(args);
+        const same = recent.filter((r) => r.sig === sig && r.content === content).length;
+        recent.push({ sig, content });
+        if (recent.length > 12) recent.shift();
+        let said = content;
+        if (same >= 2 && name !== 'wait' && name !== 'checklist') {
+          said += `\n\nNote: this is call number ${same + 1} of ${name} with these exact arguments and the same result. Repeating it won't help: take a different approach (another element, find, scroll, keyboard, run_js, or another route to the goal).`;
+        }
         const tab = agent.tabId != null ? await chrome.tabs.get(agent.tabId).catch(() => null) : null;
         log('tool', {
           name, args: args ?? tc.function.arguments, ok, ms: Math.round(ms), label, url: tab?.url,
           result: content.length > 4000 ? content.slice(0, 4000) + `…[${content.length} chars]` : content,
         });
         if (image) images.push(image);
-        results[k] = { role: 'tool', tool_call_id: tc.id, content, _label: label, _ok: ok, _ms: Math.round(ms) };
+        results[k] = { role: 'tool', tool_call_id: tc.id, content: said, _label: label, _ok: ok, _ms: Math.round(ms) };
         steps++;
       };
 
-      let res;
-      try {
-        res = await complete({
-          apiKey: S.apiKey, body: requestBody(), signal,
-          onText: (s) => view.text(s), onReasoning: (r) => view.reasoning(r), onToolStart: (idx, name) => view.toolStart(idx, name),
-          onToolReady: (idx, tc) => { calls[idx] = tc; pump(false); },
-        });
-      } catch (e) {
+      // One model call, retried on rate limits, provider errors, dropped or stalled
+      // streams, empty replies and context overflow (with a tighter history).
+      let res, resumed = false;
+      for (let attempt = 0; ; attempt++) {
+        let err = null;
+        try {
+          res = await complete({
+            apiKey: S.apiKey, body: requestBody(), signal,
+            onText: (s) => view.text(s), onReasoning: (r) => view.reasoning(r), onToolStart: (idx, name) => view.toolStart(idx, name),
+            onToolReady: (idx, tc) => { calls[idx] = tc; pump(false); },
+          });
+          const u = res.usage;
+          if (u) { cost += u.cost || 0; tokens += u.total_tokens || 0; live.cost = cost; live.tokens = tokens; paintTotals(); }
+          const m = res.msg;
+          if (m.content?.trim() || m.tool_calls?.length || signal.aborted) break;
+          err = Object.assign(new Error('The model sent an empty reply'), { retriable: true });
+        } catch (e) { err = e; }
         if (started) {
-          // Some actions already ran: keep history consistent with what happened.
+          // Some actions already ran: keep history consistent with what happened,
+          // then let the model pick up from those results in the next round.
           await chain;
-          const partial = e.partial || { role: 'assistant', content: '' };
+          const partial = err.partial || { role: 'assistant', content: '' };
           partial.tool_calls = calls.slice(0, started);
           messages.push(partial, ...results.slice(0, started));
-        } else if (cacheTail && /^400\b/.test(e.message) && /cache/i.test(e.message) && S.model.includes('anthropic/')) {
-          cacheTail = false;
-          i--;
-          continue;
+          if (!err.retriable || recoveries-- <= 0) throw err;
+          log('retry', { round: i, message: err.message, resumed: true });
+          resumed = true;
+          break;
         }
-        throw e;
+        if (signal.aborted) throw err;
+        const anthropicCache = cacheTail && /^400\b/.test(err.message) && /cache/i.test(err.message) && S.model.includes('anthropic/');
+        if (anthropicCache) cacheTail = false;
+        else if (err.overflow && squeeze < KEEP_FULL.length - 1) squeeze++;
+        else if (!err.retriable || attempt >= RETRIES || recoveries-- <= 0) throw err;
+        const wait = anthropicCache || err.overflow ? 0
+          : err.retryAfter ? Math.min(err.retryAfter * 1000, 30000) : Math.min(1000 * 2 ** attempt, 16000) * (0.75 + Math.random() / 2);
+        log('retry', { round: i, attempt: attempt + 1, message: err.message, overflow: !!err.overflow, squeeze, wait: Math.round(wait) });
+        view.discard();
+        calls.length = 0;
+        turn.waiting(err.overflow ? 'Trimming context' : `Retrying (${attempt + 1}/${RETRIES})`);
+        if (wait) await pause(wait);
+        if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        view = turn.response();
       }
+      if (resumed) continue;
       const { msg, usage, finish, ttft, ms: llmMs, provider, genId } = res;
-      if (usage) { cost += usage.cost || 0; tokens += usage.total_tokens || 0; live.cost = cost; live.tokens = tokens; paintTotals(); }
+      cutOff = finish === 'length';
       log('llm', {
-        round: i, model: S.model, provider, id: genId, finish, ms: Math.round(llmMs), ttft: Math.round(ttft), usage,
+        round: i, model: S.model, provider, id: genId, finish, ms: Math.round(llmMs), ttft: Math.round(ttft), usage, squeeze,
         text: msg.content || '', toolCalls: (msg.tool_calls || []).map((tc) => tc.function.name),
       });
       view.finish(msg);
@@ -550,7 +623,26 @@ async function run() {
       pump(true);
       await chain;
       messages.push(msg, ...results);
-      if (!msg.tool_calls?.length) { hitLimit = false; break; }
+      if (!msg.tool_calls?.length) {
+        if (signal.aborted) { hitLimit = false; stopped = true; turn.notice('Stopped.'); break; }
+        // A reply cut off by the output limit isn't an answer.
+        if (cutOff && nudges > 0) {
+          nudge('Your last reply was cut off by the output token limit. Continue from where it stopped, in shorter pieces.');
+          continue;
+        }
+        // Quitting with requirements still open is the usual way long tasks fail.
+        // Once per set of open items: a second stop on the same ones is deliberate.
+        const open = openChecklist();
+        const openIds = open.map((x) => x.id).join(',');
+        if (open.length && nudges > 0 && openIds !== nudgedFor) {
+          nudgedFor = openIds;
+          nudge(`The checklist still has ${open.length} open item${open.length === 1 ? '' : 's'}: ${open.map((x) => x.id).join(', ')}. ` +
+            'Keep working on them. If one truly cannot be done, mark it failed with a note saying why. If you need the user to decide or provide something, say so and stop.');
+          continue;
+        }
+        hitLimit = false;
+        break;
+      }
       if (images.length) {
         messages.push({
           role: 'user', _img: true,
@@ -895,7 +987,7 @@ $('#setReasoning').onchange = (e) => { S.reasoning = e.target.value; save(); };
 $('#setFast').onchange = (e) => { S.fast = e.target.checked; save(); };
 $('#setOverlay').onchange = (e) => { S.overlay = e.target.checked; save(); };
 $('#setTrusted').onchange = (e) => { S.trusted = e.target.checked; save(); };
-$('#setSteps').onchange = (e) => { S.maxSteps = Math.max(1, Math.min(500, +e.target.value || 40)); e.target.value = S.maxSteps; save(); };
+$('#setSteps').onchange = (e) => { S.maxSteps = Math.max(1, Math.min(500, +e.target.value || DEFAULTS.maxSteps)); e.target.value = S.maxSteps; save(); };
 $('#setUnlimited').onchange = (e) => { S.unlimited = e.target.checked; $('#stepsRow').classList.toggle('off', S.unlimited); save(); };
 $('#setInstr').oninput = (e) => { S.instructions = e.target.value; save(); };
 $('#setKeyBtn').onclick = () => { S.apiKey = ''; save(); closeSheets(); showOnboard(); };
@@ -937,7 +1029,10 @@ $('#obForm').onsubmit = async (e) => {
     chrome.windows.getCurrent(),
   ]);
   S = { ...DEFAULTS, ...(settings || {}) };
-  if ((settings?.v || 1) < 2) { S.trusted = true; S.v = 2; save(); }
+  if ((settings?.v || 1) < 2) S.trusted = true;
+  // 40 rounds was the old default and cut long tasks off mid-way.
+  if ((settings?.v || 1) < 3 && S.maxSteps === 40) S.maxSteps = 100;
+  if (S.v !== DEFAULTS.v) { S.v = DEFAULTS.v; save(); }
   agent.windowId = win.id;
   const [active] = await chrome.tabs.query({ active: true, windowId: win.id });
   agent.tabId = active?.id ?? null;

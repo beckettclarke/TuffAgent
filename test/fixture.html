@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TuffAgent fixture</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; }
+  nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; background: #eee; }
+  section { padding: 12px 16px; border-bottom: 1px solid #ddd; }
+  .card { cursor: pointer; border: 1px solid #ccc; padding: 8px; display: inline-block; width: 180px; }
+  .chk { display: none; }
+  table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 4px 8px; }
+  #banner { position: fixed; left: 0; right: 0; bottom: 0; height: 70px; background: #222; color: #fff; z-index: 10; padding: 8px; }
+  #half { position: fixed; bottom: 40px; left: 20px; width: 160px; height: 40px; }
+  #full { position: fixed; bottom: 10px; right: 30px; width: 120px; height: 30px; }
+  .sort li { padding: 8px; margin: 4px 0; background: #def; list-style: none; width: 200px; user-select: none; }
+  .tiny { width: 18px; height: 18px; padding: 0; }
+  #modal { position: fixed; inset: 20% 30%; background: #fff; border: 2px solid #333; padding: 16px; z-index: 20; }
+  .spacer { height: 2600px; }
+</style>
+</head>
+<body>
+<nav id="nav"></nav>
+
+<section id="cards">
+  <h2>Products</h2>
+  <div class="card" data-id="blue"><span>Blue T-shirt</span><br><span class="price">$19.99</span></div>
+  <div class="card" data-id="red"><span>Red T-shirt</span><br><span class="price">$24.00</span></div>
+  <p id="picked">Picked: none</p>
+  <div class="price-row"><span>Price:</span> <span>$19.99</span></div>
+  <button class="btn-close" id="closeBtn"><svg class="icon-close" width="12" height="12"><path d="M0 0L12 12"/></svg></button>
+</section>
+
+<section id="form">
+  <h2>Form</h2>
+  <input type="checkbox" id="agree" class="chk"><label for="agree" style="cursor:pointer">I agree to the terms</label>
+  <div>Email</div><input id="email">
+  <label>Arrival <input type="date" id="arrival"></label>
+  <label>Time <input type="time" id="when"></label>
+  <label>Size <select id="size"><option>Small</option><option>Medium</option><option>Large</option></select></label>
+  <input id="combo" role="combobox" aria-autocomplete="list" placeholder="City">
+  <div id="sugg"></div>
+</section>
+
+<section id="orders">
+  <h2>Orders</h2>
+  <table>
+    <tr><th>Order</th><th>Customer</th><th>Total</th><th></th></tr>
+    <tr><td>#1001</td><td>Alice</td><td>$20</td><td><button data-row="alice">Delete</button></td></tr>
+    <tr><td>#1002</td><td>Bob</td><td>$35</td><td><button data-row="bob">Delete</button></td></tr>
+    <tr><td>#1003</td><td>Carol</td><td>$12</td><td><button data-row="carol">Delete</button></td></tr>
+  </table>
+  <p id="deleted"></p>
+</section>
+
+<section id="async">
+  <button id="load">Load results</button>
+  <div id="results"></div>
+  <button id="openModal">Open settings</button>
+  <button class="tiny" id="tiny" aria-label="Tiny">+</button>
+  <span id="tinyCount">0</span>
+</section>
+
+<section id="drag">
+  <h2>Sortable</h2>
+  <ul class="sort" id="sortable"><li>Alpha</li><li>Beta</li><li>Gamma</li></ul>
+  <ul class="sort" id="native"><li draggable="true">One</li><li draggable="true">Two</li><li draggable="true">Three</li></ul>
+  <div id="host"></div>
+  <iframe id="frame" srcdoc="<button onclick=&quot;this.textContent='Frame clicked'&quot;>Frame button</button>" width="200" height="50"></iframe>
+</section>
+
+<div class="spacer"></div>
+<footer><p>Footer fact: the answer is 42.</p></footer>
+
+<div id="banner">We use cookies. <button id="accept">Accept cookies</button></div>
+<button id="half">Half covered</button>
+<button id="full">Fully covered</button>
+
+<script>
+  const nav = document.getElementById('nav');
+  for (let i = 1; i <= 80; i++) { const a = document.createElement('a'); a.href = '#n' + i; a.textContent = 'Nav link ' + i; nav.appendChild(a); }
+  // React-style: handler on the card, nothing in the markup says so.
+  for (const c of document.querySelectorAll('.card')) c.addEventListener('click', () => { document.getElementById('picked').textContent = 'Picked: ' + c.dataset.id; });
+  document.querySelectorAll('[data-row]').forEach((b) => b.onclick = () => { document.getElementById('deleted').textContent = 'Deleted ' + b.dataset.row; });
+  document.getElementById('load').onclick = () => setTimeout(() => { document.getElementById('results').innerHTML = '<div>Loaded 3 results</div>'; }, 40);
+  document.getElementById('tiny').onclick = () => { const c = document.getElementById('tinyCount'); c.textContent = +c.textContent + 1; };
+  document.getElementById('full').style.zIndex = 1;
+  document.getElementById('banner').style.zIndex = 5;
+  document.getElementById('half').style.zIndex = 6; // above banner, partly
+  // Banner covers #full entirely (same box region).
+  document.getElementById('full').style.bottom = '20px';
+  document.getElementById('openModal').onclick = () => {
+    const m = document.createElement('div');
+    m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-label', 'Settings');
+    m.innerHTML = '<h3>Settings</h3><label><input type="checkbox"> Dark mode</label> <button id="closeModal">Close</button>';
+    document.body.appendChild(m);
+    m.querySelector('#closeModal').onclick = () => m.remove();
+  };
+  document.getElementById('combo').addEventListener('keyup', (e) => {
+    document.getElementById('sugg').innerHTML = e.target.value ? `<div role="listbox"><div role="option">${e.target.value}ville</div></div>` : '';
+  });
+  // Pointer-based sortable, the way dnd libraries do it.
+  (() => {
+    const list = document.getElementById('sortable');
+    let drag = null;
+    list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li'); if (li) drag = li; });
+    document.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('#sortable li');
+      if (over && over !== drag) {
+        const r = over.getBoundingClientRect();
+        list.insertBefore(drag, e.clientY > r.top + r.height / 2 ? over.nextSibling : over);
+      }
+    });
+    document.addEventListener('pointerup', () => { drag = null; });
+  })();
+  // HTML5 drag and drop.
+  (() => {
+    const list = document.getElementById('native');
+    let src = null;
+    list.addEventListener('dragstart', (e) => { src = e.target; e.dataTransfer.setData('text/plain', src.textContent); });
+    list.addEventListener('dragover', (e) => e.preventDefault());
+    list.addEventListener('drop', (e) => { e.preventDefault(); const t = e.target.closest('li'); if (t && src && t !== src) list.insertBefore(src, t.nextSibling); });
+  })();
+  const sh = document.getElementById('host').attachShadow({ mode: 'open' });
+  sh.innerHTML = '<button id="sb">Shadow save</button>';
+  sh.getElementById('sb').onclick = function () { this.textContent = 'Shadow saved'; };
+</script>
+<script src="../keys.js"></script>
+<script src="../content.js"></script>
+<script src="checks.js"></script>
+</body>
+</html>
