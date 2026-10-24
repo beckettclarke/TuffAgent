@@ -1,7 +1,10 @@
-import { agent, exec, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, openChecklist, parseArgs, TOOLS } from './tools.js';
-import { PACKS, packsForUrl } from './sites/index.js';
+import { agent, exec, normalize, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, openChecklist, parseArgs, TOOLS } from './tools.js';
+import { PACKS, packOf, packsForUrl } from './sites/index.js';
 import { complete, checkKey, listModels } from './llm.js';
 import { md } from './md.js';
+import { field } from './field.js';
+import { fa, toolIcon } from './icons.js';
+import { activity } from './activity.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -9,14 +12,14 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 const DEFAULTS = {
   apiKey: '', model: 'anthropic/claude-haiku-5.5', reasoning: 'auto', fast: true, overlay: true,
-  trusted: true, maxSteps: 100, unlimited: false, instructions: '', recent: [], v: 3,
+  trusted: true, maxSteps: 100, unlimited: false, instructions: '', loader: 'line', recent: [], v: 3,
 };
 // Retries per model call (rate limits, overloaded providers, dropped streams).
 const RETRIES = 5;
+// Tools that don't touch a page or each other; a run of these in one response starts together.
+const PARALLEL = new Set(['tab_open', 'tabs_list', 'history_search', 'bookmarks', 'downloads']);
 const FEATURED = ['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'openai/gpt-5.6-luna',
   'openai/gpt-5.6-terra', 'google/gemini-3.8-flash', 'x-ai/grok-4.7', 'moonshotai/kimi-k3', 'qwen/qwen3.8-flash'];
-const PROVIDER_HUE = { anthropic: '#d97757', openai: '#10a37f', google: '#4285f4', 'x-ai': '#8b8b93', qwen: '#7c5cff', moonshotai: '#1f6feb',
-  'meta-llama': '#0866ff', mistralai: '#fa520f', deepseek: '#4d6bfe', 'z-ai': '#3b82f6', minimax: '#e8475f', cohere: '#39594d' };
 
 let S = { ...DEFAULTS };
 let messages = [];
@@ -81,41 +84,14 @@ function loadChat(c) {
   restoreChecklist(messages);
 }
 
+const waitingOn = () => `Waiting on ${modelInfo()?.name || S.model.split('/').pop()}`;
 const log = (type, data) => chatLog.push({ t: Date.now(), type, ...data });
 const modelInfo = (id = S.model) => models.find((m) => m.id === id);
 
 // ── Icons for tool steps ──
-const IC = {
-  tab: '<rect x="2.5" y="3.5" width="11" height="9" rx="2"/><path d="M2.5 6.5h11"/>',
-  nav: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.6 1.6 2.3 3.4 2.3 5.5S9.6 11.9 8 13.5M8 2.5C6.4 4.1 5.7 5.9 5.7 8s.7 3.9 2.3 5.5"/>',
-  read: '<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7"/>',
-  find: '<circle cx="7" cy="7" r="4"/><path d="m10 10 3.5 3.5"/>',
-  click: '<path d="M5 2.5 12.5 8l-3.4.8 1.9 3.6-1.6.8-1.9-3.6L5 12z"/>',
-  type: '<rect x="2" y="4.5" width="12" height="7" rx="1.6"/><path d="M4.5 7h.01M7 7h.01M9.5 7h.01M11.5 7h.01M5 9.3h6"/>',
-  key: '<path d="M12.5 4v4.5a1.5 1.5 0 0 1-1.5 1.5H4M6 8 4 10l2 2"/>',
-  scroll: '<rect x="4.5" y="2" width="7" height="12" rx="3.5"/><path d="M8 4.5v2.5"/>',
-  hover: '<path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3"/><circle cx="8" cy="8" r="1.3"/>',
-  shot: '<rect x="2" y="4" width="12" height="9" rx="2"/><circle cx="8" cy="8.5" r="2.3"/><path d="M5.5 4l1-1.5h3l1 1.5"/>',
-  code: '<path d="m5.5 4.5-3 3.5 3 3.5M10.5 4.5l3 3.5-3 3.5"/>',
-  book: '<path d="M4.5 2.5h7a1 1 0 0 1 1 1v10l-4.5-3-4.5 3v-10a1 1 0 0 1 1-1z"/>',
-  hist: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
-  wait: '<path d="M4.5 2.5h7M4.5 13.5h7M5 2.5c0 3 6 3.5 6 5.5s-6 2.5-6 5.5M11 2.5c0 1-1 1.8-3 3"/>',
-  sel: '<rect x="2.5" y="4" width="11" height="8" rx="2"/><path d="m6 7.3 2 2 2-2"/>',
-  group: '<rect x="2" y="3" width="5" height="5" rx="1.2"/><rect x="9" y="3" width="5" height="5" rx="1.2"/><rect x="2" y="10" width="12" height="3.5" rx="1.2"/>',
-  drag: '<path d="M3 3h3M3 3v3M13 13h-3M13 13v-3M3 3l10 10"/>',
-  paste: '<rect x="3.5" y="3" width="9" height="11" rx="1.5"/><path d="M6 3V2h4v1M6 7h4M6 9.5h4"/>',
-  menu: '<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>',
-  list: '<path d="m2.5 4.5 1 1 2-2M2.5 10.5l1 1 2-2M7.5 4.5h6M7.5 10.5h6"/>',
-};
-const TOOL_ICON = {
-  tabs_list: 'tab', tab_open: 'tab', tab_switch: 'tab', tab_close: 'tab', tab_group: 'group', navigate: 'nav', read_page: 'read',
-  get_text: 'read', find: 'find', click: 'click', drag: 'drag', type: 'type', key: 'key', scroll: 'scroll', hover: 'hover', select_option: 'sel',
-  screenshot: 'shot', run_js: 'code', bookmarks: 'book', history_search: 'hist', wait: 'wait',
-  paste: 'paste', menu: 'menu', checklist: 'list', ...Object.assign({}, ...PACKS.map((p) => p.icons || {})),
-};
-const icon = (name) => `<svg viewBox="0 0 16 16">${IC[TOOL_ICON[name]] || IC.code}</svg>`;
-const CHECK = '<svg class="check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></svg>';
-const XMARK = '<svg class="xmark" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+const icon = (name, args) => fa(toolIcon(name, args));
+const CHECK = '<i class="check fa-sharp fa-regular fa-check" aria-hidden="true"></i>';
+const XMARK = '<i class="xmark fa-sharp fa-regular fa-xmark" aria-hidden="true"></i>';
 
 // ── Scroll management: follow output unless the user scrolled up ──
 const scroller = $('#scroll');
@@ -137,9 +113,24 @@ $('#jump').onclick = () => { scroller.scrollTo({ top: scroller.scrollHeight, beh
 const thread = $('#thread');
 const setEmpty = () => { $('#empty').hidden = thread.children.length > 0; };
 
+// Copy button that sits under a message and shows on hover.
+function copyBtn(text) {
+  const b = el('button', 'copy', `${fa('copy')}<span>Copy</span>`);
+  b.title = 'Copy';
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(text); } catch { toast('Couldn’t copy'); return; }
+    b.classList.add('done');
+    b.innerHTML = `${fa('check')}<span>Copied</span>`;
+    field.at(b, 'ok');
+    setTimeout(() => { b.classList.remove('done'); b.innerHTML = `${fa('copy')}<span>Copy</span>`; }, 1400);
+  };
+  return b;
+}
+
 function userBubble(text) {
   const w = el('div', 'msg-user');
   w.appendChild(el('div', 'bubble')).textContent = text;
+  w.appendChild(copyBtn(text));
   thread.appendChild(w);
   setEmpty();
 }
@@ -186,6 +177,7 @@ class Turn {
   }
   waiting(label = 'Thinking') {
     this.clearWait();
+    activity.set('wait', /^(Thinking|Working)$/.test(label) ? waitingOn() : label);
     this.wait = this.root.appendChild(el('div', 'wait', `<span class="orb"></span><span class="shimmer">${label}</span>`));
     follow();
   }
@@ -199,9 +191,10 @@ class Turn {
     return {
       reasoning(r) {
         t.clearWait();
+        activity.set('think');
         if (!thinkEl) {
           thinkStart = performance.now();
-          thinkEl = t.root.appendChild(el('details', 'think', `<summary><svg viewBox="0 0 12 12"><path d="m4.5 3 3 3-3 3"/></svg><span class="shimmer">Thinking</span></summary><div class="tbody"></div>`));
+          thinkEl = t.root.appendChild(el('details', 'think', `<summary>${fa('chevron-right')}<span class="shimmer">Thinking</span></summary><div class="tbody"></div>`));
         }
         const b = thinkEl.querySelector('.tbody');
         b.textContent = r;
@@ -210,6 +203,7 @@ class Turn {
       },
       text(s) {
         t.clearWait();
+        activity.set('write');
         this.endThinking();
         if (!textEl) textEl = t.root.appendChild(el('div', 'md streaming'));
         pendingText = s;
@@ -225,6 +219,7 @@ class Turn {
       },
       toolStart(i, name) {
         t.clearWait();
+        activity.set('plan', preLabel(name), icon(name));
         this.endThinking();
         pending.set(i, t.step(name, preLabel(name)));
       },
@@ -237,6 +232,7 @@ class Turn {
         this.endThinking();
         if (rafT) cancelAnimationFrame(rafT), rafT = 0;
         if (textEl) { textEl.classList.remove('streaming'); textEl.innerHTML = md(msg.content || ''); }
+        if (textEl && msg.content) textEl.after(copyBtn(msg.content));
         if (!msg.content && textEl) textEl.remove();
         return (msg.tool_calls || []).map((tc, i) => this.stepAt(i, tc.function.name));
       },
@@ -259,15 +255,20 @@ class Turn {
     s.querySelector('.step-head').onclick = () => s.classList.toggle('open');
     this.stepsGroup().appendChild(s);
     follow();
+    field.at(s.querySelector('.sicon'), 'step');
     const api = {
       el: s,
-      label(l) { s.querySelector('.slabel').textContent = l; },
+      label(l, args) {
+        s.querySelector('.slabel').textContent = l;
+        if (args) s.querySelector('.sicon').innerHTML = icon(name, args);
+      },
       done(ok, { label, args, result, ms, image }) {
         s.classList.remove('running');
         s.classList.add(ok ? 'ok' : 'fail');
-        if (label) api.label(label);
+        if (label || args) api.label(label || s.querySelector('.slabel').textContent, args);
         s.querySelector('.slabel').title = label || '';
         s.querySelector('.sstate').innerHTML = ok ? CHECK : XMARK;
+        field.at(s.querySelector('.sicon'), ok ? 'ok' : 'fail');
         if (ms != null) s.querySelector('.stime').textContent = fmtMs(ms);
         const body = s.querySelector('.step-body > div');
         const argStr = args && Object.keys(args).length ? JSON.stringify(args, null, 1) : '';
@@ -297,7 +298,7 @@ class Turn {
   }
   notice(text) { this.root.appendChild(el('div', 'notice', esc(text))); follow(); }
   error(text, retry) {
-    const c = el('div', 'err-card', `<div class="et"><b>Something went wrong</b>${esc(text)}</div>`);
+    const c = el('div', 'err-card', `<div class="et"><b>${fa('triangle-exclamation')}Something went wrong</b>${esc(text)}</div>`);
     if (retry) {
       const b = el('button', 'btn ghost sm', 'Retry');
       b.onclick = () => { c.remove(); retry(); };
@@ -305,6 +306,7 @@ class Turn {
     }
     this.root.appendChild(c);
     follow();
+    field.at(c, 'fail');
   }
 }
 
@@ -318,7 +320,7 @@ function replay() {
     if (m.role !== 'assistant') continue;
     turn ||= new Turn();
     turn.root.style.animation = 'none';
-    if (m.content) turn.root.appendChild(el('div', 'md', md(m.content)));
+    if (m.content) turn.root.append(el('div', 'md', md(m.content)), copyBtn(m.content));
     for (const tc of m.tool_calls || []) {
       const r = results.get(tc.id);
       let args = {};
@@ -344,7 +346,7 @@ Date: ${new Date().toDateString()}. Platform: ${MAC ? 'macOS — shortcuts use M
 
 How to work:
 - Act, don't narrate. Do the task with tools; only ask when genuinely blocked or before risky actions.
-- Speed matters: every response costs a model round trip, so do as much as you can per response. When the next steps are predictable, emit several tool calls in one response (e.g. type into each field, then click submit, or a batch of independent edits) — they run in order. One tool call per response is the slow path.
+- Speed matters: every response costs a model round trip, so do as much as you can per response. When the next steps are predictable, emit several tool calls in one response (e.g. type into each field, then click submit, or a batch of independent edits) — they run in order. Consecutive tab_open, tabs_list, history_search, bookmarks and downloads calls run at the same time, so open several tabs in one response. One tool call per response is the slow path.
 - Snapshots list the page in reading order: text, headings, table rows ("| a | b |") and controls with refs ("[e12] button …"); links inside text appear as [text](e12). navigate, tab_open and actions that load a page return one — read it instead of calling read_page. Lines marked ·off are outside the viewport; "not shown" lines were cut for length.
 - Aim with a ref (e12), or with target = the element's visible label ("Add to cart"); when a label repeats, add near = text in the same row or card ("Order #1234") or nth. Never guess coordinates for elements that have a ref or a label. Refs go stale after navigation; labels don't.
 - Action results report what appeared or changed ("New on screen", "Changed", "New text": menus, dialogs, suggestions, errors, toasts) with refs. Act on those directly — no read_page or find needed. Chain through menus in one response when you know the item names.
@@ -356,16 +358,21 @@ How to work:
 - Use screenshot when visual layout matters, the snapshot is confusing, or content is drawn on a canvas (Google Docs/Sheets text). Screenshots tag clickable elements with their refs — click those by ref, never by guessed coordinates. Use x/y only for canvas content, reading positions off the 100px edge rulers. To see the result of actions, end that same response with a screenshot call instead of spending a separate round.`}
 - Text goes in with one type call, never key-by-key. In rich editors (Google Docs etc.), click where the text goes, then type without ref (types at the caret); use key Enter for new paragraphs.
 - key takes repeats ("Shift+ArrowRight*12"). Select ranges with drag, a triple click (clicks: 3), or click then click again with modifiers: "shift".
-- Move cards, list items and files with drag (ref → to_ref); to_position "top"/"bottom" drops before/after an item. Check the result or a snapshot to confirm it moved.
+- Move cards, list items and files with drag (ref → to_ref); to_position "top"/"bottom" drops before/after an item. A drag that moves nothing returns an error.
+- Exact numbers beat dragging: when an app has number fields for size and position (W, H, X, Y, rotation, font size), type the values there. Never drag resize handles or tap arrow keys to place or size things.
+- type replaces a field's text and reads it back; an error means the field holds something else, so read it and type the whole value again.
 - The current tab is given in <context>. tab_open (active) and tab_switch change it; other page tools accept tab_id.
 - Tasks with many requirements: call checklist first (one item per requirement), mark items done only after verifying them, and report from it with exact counts.
+- Stay in scope: do what was asked, nothing more. No extra documents, designs, tabs, files or downloads, and no page-wide shortcuts ("Change all", "Apply to all", "Replace all") unless the task asks for them.
+- When the task says what must be on top or behind, set the stacking order explicitly (To front / To back, Bring forward / Send backward) and read it back; never infer it.
+- Recover without destroying: fix forward. Don't delete and recreate content, undo a long run of steps, or reload to escape a bad state; undo only the step that just went wrong.
 - Trust tool results. A result without an error means it happened; don't re-check each step with screenshots, read_page or re-reads, and never redo something a result or an earlier check already confirmed. Verify once after a batch of edits and once at the end.
 - Keep thinking short: pick the obvious next actions and emit them. Don't re-plan the whole task every round.
 - If something fails, adapt (re-read the page, try another element, scroll) instead of repeating the same call. When a call fails, the remaining calls in that response are skipped, so re-plan from the error. After two failures on the same approach, switch approach (a dedicated tool, paste, menu search, run_js), or skip the item and come back to it.
 - Finish the job. Don't stop with requirements left because a step is slow or fiddly; skip a stuck item, do the rest, then come back to it. Stop early only when truly blocked (sign-in, permission, missing information), and then say exactly what is left.
 - Before irreversible or sensitive actions — purchases, sending messages or emails, posting publicly, deleting data, entering payment info or passwords — stop and ask the user to confirm, unless they explicitly asked for exactly that.
 - Before answering, check the result against every part of the request (dates, counts, filters, sort order, which item). When asked for information, give the exact values as the page shows them (numbers, names, dates, prices) and where they came from.
-- Finish with a short answer or summary in markdown. No preamble.${activePacks().map((p) => `\n\n${p.prompt}`).join('')}${S.instructions.trim() ? `\n\nUser's custom instructions:\n${S.instructions.trim()}` : ''}`;
+- Finish with a short answer or summary in markdown, built from evidence: say only what tool results showed. Give no reasons or explanations the tools didn't show, and every number must match a value a tool measured (no rounding into a different number). No preamble.${activePacks().map((p) => `\n\n${p.prompt}`).join('')}${S.instructions.trim() ? `\n\nUser's custom instructions:\n${S.instructions.trim()}` : ''}`;
 }
 
 // Tool results are trimmed by age. The cut-off points move in steps of 10
@@ -456,6 +463,7 @@ async function send(text) {
   if (!text || running) return;
   userBubble(text);
   follow(true);
+  field.at(sendBtn, 'send');
   messages.push({ role: 'user', content: text + (await contextLine()), _display: text });
   saveThread();
   run();
@@ -466,6 +474,7 @@ async function run() {
   runEnded = new Promise((r) => (ended = r));
   running = true;
   document.body.classList.add('running');
+  activity.set('wait', waitingOn());
   updateSend();
   const turn = new Turn();
   ctrl = new AbortController();
@@ -480,6 +489,18 @@ async function run() {
   let recoveries = 12, nudges = 3, nudgedFor = '';
   // Recent calls, to notice the model repeating one that keeps giving the same result.
   const recent = [];
+  // Small steps repeated toward one goal (arrow-key nudges, drags that move
+  // nothing, probing the page with run_js), counted since the checklist last
+  // changed. Past a limit the model is told to change approach.
+  const grind = { keys: 0, drags: 0, js: 0, next: {} };
+  const GRIND = {
+    keys: [20, 'key presses', 'Tapping keys to nudge or step through things is the slow path: type the value into the app\'s number field, or use a menu command.'],
+    drags: [5, 'drags that moved nothing', 'Dragging is not working here: use the app\'s size and position fields, or a site tool.'],
+    js: [10, 'run_js calls', 'Probing the page with run_js is not converging: use read_page, find, a site tool, or act on what you already know.'],
+  };
+  // Site edits since the site's own read tool last ran, for the check before the final answer.
+  let seq = 0, lastEdit = 0, lastRead = 0, finalChecked = false;
+  const task = messages.findLast(typed)?._display || '';
   squeeze = 0;
   const limit = S.unlimited ? Infinity : S.maxSteps;
   log('run', {
@@ -501,16 +522,24 @@ async function run() {
       let view = turn.response();
       // Each tool call starts as soon as its arguments finish streaming, so the
       // browser works while the model is still writing the next call. Calls run
-      // strictly in order.
+      // in order, except that a run of independent ones (opening tabs, lookups)
+      // starts together.
       const calls = [], results = [], images = [];
       // The calls in one response are a plan; once one fails, the rest act on a
       // page that isn't what the model expected (typing into the wrong place).
-      let chain = Promise.resolve(), started = 0, failed = null, cutOff = false;
+      let chain = Promise.resolve(), group = null, started = 0, failed = null, cutOff = false, acting = 0;
       const parses = (tc) => { try { JSON.parse(tc.function.arguments?.trim() || '{}'); return true; } catch { return false; } };
       const pump = (final) => {
         while (started < calls.length && calls[started] && (final || parses(calls[started]))) {
           const k = started++;
-          chain = chain.then(() => runTool(k, calls[k]));
+          if (PARALLEL.has(normalize(calls[k].function.name, {})[0])) {
+            group ||= { before: chain, all: [] };
+            group.all.push(group.before.then(() => runTool(k, calls[k])));
+            chain = Promise.all(group.all);
+          } else {
+            group = null;
+            chain = chain.then(() => runTool(k, calls[k]));
+          }
         }
       };
       const runTool = async (k, tc) => {
@@ -527,7 +556,9 @@ async function run() {
           return;
         }
         const args = parseArgs(tc.function.arguments);
-        sv.label(preLabel(name, args || {}));
+        sv.label(preLabel(name, args || {}), args);
+        acting++;
+        activity.set('act', preLabel(name, args || {}), icon(name, args || {}));
         const s0 = performance.now();
         let content, label, ok = true, image;
         try {
@@ -545,6 +576,7 @@ async function run() {
         }
         const ms = performance.now() - s0;
         sv.done(ok, { label, args, result: content, ms, image });
+        if (!--acting) activity.set('wait', waitingOn());
         // Same call, same result, again: the model is stuck in a loop. Say so (to the
         // model only) so it changes approach instead of burning rounds.
         const sig = name + ' ' + JSON.stringify(args);
@@ -555,6 +587,19 @@ async function run() {
         if (same >= 2 && name !== 'wait' && name !== 'checklist') {
           said += `\n\nNote: this is call number ${same + 1} of ${name} with these exact arguments and the same result. Repeating it won't help: take a different approach (another element, find, scroll, keyboard, run_js, or another route to the goal).`;
         }
+        if (name === 'checklist' && ok && (args?.set || args?.done?.length || args?.failed?.length)) Object.assign(grind, { keys: 0, drags: 0, js: 0, next: {} });
+        if (name === 'key' && args?.keys) grind.keys += globalThis.TuffKeys.parse(String(args.keys)).reduce((n, k) => n + (k.text ? 0 : k.n), 0);
+        if (name === 'drag' && /nothing moved|did not move/.test(content)) grind.drags++;
+        if (name === 'run_js') grind.js++;
+        for (const [k, [max, what, tip]] of Object.entries(GRIND)) {
+          if (grind[k] <= Math.max(max, grind.next[k] || 0)) continue;
+          said += `\n\nNote: ${grind[k]} ${what} since the checklist last changed. ${tip} Stop and take a different approach.`;
+          grind.next[k] = grind[k] + max;
+        }
+        seq++;
+        const pack = packOf(name);
+        if (pack?.finalCheck === name) lastRead = seq;
+        else if (pack && ok) lastEdit = seq;
         const tab = agent.tabId != null ? await chrome.tabs.get(agent.tabId).catch(() => null) : null;
         log('tool', {
           name, args: args ?? tc.function.arguments, ok, ms: Math.round(ms), label, url: tab?.url,
@@ -622,6 +667,13 @@ async function run() {
       calls.length = msg.tool_calls?.length || 0;
       pump(true);
       await chain;
+      // Every 20 rounds, the request again, at the end of the newest message (the
+      // cached prefix stays put): long runs drift away from what was asked.
+      if (i && i % 20 === 0 && results.length) {
+        const open = openChecklist();
+        results[results.length - 1].content += `\n\nReminder of the task: "${task.length > 800 ? task.slice(0, 799) + '…' : task}"` +
+          (open.length ? `\nOpen checklist items: ${open.map((x) => `${x.id}: ${x.text}`).join('; ')}` : '');
+      }
       messages.push(msg, ...results);
       if (!msg.tool_calls?.length) {
         if (signal.aborted) { hitLimit = false; stopped = true; turn.notice('Stopped.'); break; }
@@ -638,6 +690,24 @@ async function run() {
           nudgedFor = openIds;
           nudge(`The checklist still has ${open.length} open item${open.length === 1 ? '' : 's'}: ${open.map((x) => x.id).join(', ')}. ` +
             'Keep working on them. If one truly cannot be done, mark it failed with a note saying why. If you need the user to decide or provide something, say so and stop.');
+          continue;
+        }
+        // Site edits since the last read: read the result once with the site's own
+        // tool before accepting the answer, so the summary is checked against the page.
+        const url = lastEdit > lastRead && !finalChecked ? (await currentTabInfo())?.url || '' : '';
+        const checker = url && activePacks().find((p) => p.finalCheck && p.match(url));
+        if (checker && !signal.aborted) {
+          finalChecked = true;
+          const sv = turn.step(checker.finalCheck, 'Final check');
+          const s0 = performance.now();
+          let out, ok = true;
+          try { out = (await exec(checker.finalCheck, {})).text; } catch (e) { ok = false; out = `Error: ${e.message}`; }
+          sv.done(ok, { label: ok ? 'Final check' : 'Final check — failed', result: out, ms: performance.now() - s0 });
+          log('tool', { name: checker.finalCheck, auto: true, ok, ms: Math.round(performance.now() - s0), result: out.length > 4000 ? out.slice(0, 4000) + '…' : out });
+          messages.push({
+            role: 'user', _hidden: true,
+            content: `Automatic final check (${checker.finalCheck}):\n${out}\n\nCompare every requirement with this. If something is off, fix it. Otherwise give the final summary, with every number taken from this read or another tool result.`,
+          });
           continue;
         }
         hitLimit = false;
@@ -664,9 +734,11 @@ async function run() {
     running = false;
     ctrl = null;
     document.body.classList.remove('running');
+    activity.stop();
     updateSend();
     const meta = { steps, ms: performance.now() - t0, cost, tokens };
     turn.meta(meta);
+    field.at($('#composer'), stopped ? 'ok' : 'done');
     if (lastAssistant) lastAssistant._meta = meta;
     await saveThread();
     overlayOff();
@@ -686,6 +758,10 @@ function autosize() { input.style.height = 'auto'; input.style.height = Math.min
 function updateSend() { sendBtn.disabled = !running && !input.value.trim(); sendBtn.title = running ? 'Stop (Esc)' : 'Send (⏎)'; }
 input.addEventListener('input', () => { autosize(); updateSend(); });
 input.addEventListener('keydown', (e) => {
+  if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
+    const b = input.getBoundingClientRect();
+    field.ripple(b.left + Math.min(b.width - 8, 8 + (input.value.length % 64) * 6.5), b.top + 10, 'key');
+  }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     if (!running) submit();
@@ -715,6 +791,7 @@ async function newChat() {
   chrome.storage.local.set({ currentChat: null });
   thread.innerHTML = '';
   paintTotals();
+  field.ripple(innerWidth / 2, innerHeight * .4, 'done');
   const em = $('#empty');
   em.hidden = false;
   em.style.animation = 'none'; void em.offsetWidth; em.style.animation = '';
@@ -732,6 +809,7 @@ async function refreshTab() {
   if (span.textContent !== title) {
     span.textContent = title;
     chip.classList.remove('flash'); void chip.offsetWidth; chip.classList.add('flash');
+    field.at(chip, 'ok');
   }
   const img = $('#tabIcon');
   const src = t?.favIconUrl && !t.favIconUrl.startsWith('chrome://') ? t.favIconUrl : '';
@@ -771,8 +849,7 @@ const ctxFmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M` : `${
 
 function modelRow(m) {
   const b = el('button', 'pick' + (m.id === S.model ? ' sel' : ''));
-  const hue = PROVIDER_HUE[m.provider] || '#6b7280';
-  b.innerHTML = `<span class="pav" style="background:${hue}">${esc(m.provider.slice(0, 2))}</span>
+  b.innerHTML = `<span class="pav">${esc(m.provider.slice(0, 2))}</span>
     <span class="pmain"><div class="pname">${esc(m.name)}</div><div class="pid">${esc(m.id)}</div></span>
     <span class="pside"><div class="badges">${m.vision ? '<span class="badge">vision</span>' : ''}${m.ctx ? `<span class="badge">${ctxFmt(m.ctx)}</span>` : ''}</div><div>${price(m.pin)} · ${price(m.pout)}</div></span>`;
   b.onclick = () => chooseModel(m.id);
@@ -831,8 +908,6 @@ function paintModel() {
   $('#modelName').textContent = m?.name || S.model.split('/').pop();
   $('#modelBtn').title = S.model;
   $('#setModel').textContent = S.model;
-  const hue = PROVIDER_HUE[(m?.provider) || S.model.split('/')[0]];
-  $('.pdot').style.background = hue || '';
 }
 function openPicker() {
   openSheet('#picker');
@@ -866,8 +941,8 @@ const when = (ms) => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
-const DL = '<svg viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 12.8h10"/></svg>';
-const TRASH = '<svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>';
+const DL = fa('file-export');
+const TRASH = fa('trash-can');
 
 let toastT;
 function toast(text) {
@@ -978,6 +1053,7 @@ function openSettings() {
   $('#setUnlimited').checked = S.unlimited;
   $('#stepsRow').classList.toggle('off', S.unlimited);
   $('#setInstr').value = S.instructions;
+  $('#setLoader').value = S.loader;
   $('#setKey').textContent = S.apiKey ? `${S.apiKey.slice(0, 10)}…${S.apiKey.slice(-4)}` : '—';
   paintModel();
   openSheet('#settings');
@@ -990,6 +1066,9 @@ $('#setTrusted').onchange = (e) => { S.trusted = e.target.checked; save(); };
 $('#setSteps').onchange = (e) => { S.maxSteps = Math.max(1, Math.min(500, +e.target.value || DEFAULTS.maxSteps)); e.target.value = S.maxSteps; save(); };
 $('#setUnlimited').onchange = (e) => { S.unlimited = e.target.checked; $('#stepsRow').classList.toggle('off', S.unlimited); save(); };
 $('#setInstr').oninput = (e) => { S.instructions = e.target.value; save(); };
+$('#setLoader').onchange = (e) => { S.loader = e.target.value; paintLoader(); save(); };
+// Line or text (ASCII meter) loader in the composer while the agent works.
+function paintLoader() { document.body.dataset.loader = S.loader; }
 $('#setKeyBtn').onclick = () => { S.apiKey = ''; save(); closeSheets(); showOnboard(); };
 
 // Onboarding
@@ -1010,12 +1089,14 @@ $('#obForm').onsubmit = async (e) => {
     await checkKey(key);
     S.apiKey = key;
     save();
+    field.at(btn, 'done');
     const ob = $('#onboard');
     ob.style.transition = 'opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1)';
     ob.style.opacity = '0'; ob.style.transform = 'scale(1.02)';
     setTimeout(() => { ob.hidden = true; ob.style.cssText = ''; input.focus(); }, 320);
   } catch (ex) {
     err.textContent = ex.message;
+    field.at(btn, 'fail');
     card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
   } finally {
     btn.classList.remove('loading');
@@ -1029,6 +1110,7 @@ $('#obForm').onsubmit = async (e) => {
     chrome.windows.getCurrent(),
   ]);
   S = { ...DEFAULTS, ...(settings || {}) };
+  paintLoader();
   if ((settings?.v || 1) < 2) S.trusted = true;
   // 40 rounds was the old default and cut long tasks off mid-way.
   if ((settings?.v || 1) < 3 && S.maxSteps === 40) S.maxSteps = 100;

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Harbor Lights Festival - 1080 × 1350px</title>
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 0; background: #0f1015; color: #eee; }
+  button, [role=button], [role=tab], [role=menuitem] { cursor: pointer; }
+  #menubar { position: fixed; top: 0; left: 0; right: 0; height: 36px; background: #222; display: flex; gap: 8px; align-items: center; padding: 0 8px; z-index: 5; }
+  #filemenu { position: fixed; top: 36px; left: 700px; background: #333; padding: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
+  #filemenu[hidden] { display: none; }
+  #toolbar { position: fixed; top: 40px; left: 380px; right: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; z-index: 4; }
+  #tabs { position: fixed; top: 80px; left: 0; width: 60px; display: flex; flex-direction: column; gap: 6px; }
+  #side { position: fixed; top: 80px; left: 64px; width: 300px; bottom: 0; overflow: auto; background: #1d1f26; padding: 8px; }
+  #side input { width: 120px; }
+  #pagewrap { position: absolute; left: 400px; top: 160px; }
+  #page { position: relative; }
+  .el { position: absolute; }
+  .handle { position: fixed; width: 14px; height: 14px; margin: -7px 0 0 -7px; background: #fff; border: 1px solid #7b2ff7; padding: 0; z-index: 3; }
+  .row { display: flex; gap: 4px; align-items: center; margin: 3px 0; }
+</style>
+</head>
+<body>
+<div id="menubar"><div role="menuitem" aria-label="File" id="fileBtn" tabindex="0">File</div></div>
+<div id="filemenu" role="menu" hidden></div>
+<div id="toolbar"></div>
+<div id="tabs" role="tablist">
+  <div role="tab" aria-label="Elements" id="tabElements">Elements</div>
+  <div role="tab" aria-label="Text" id="tabText">Text</div>
+</div>
+<aside id="side"></aside>
+<div id="pagewrap">
+  <div id="page" style="width: 1080px; height: 1350px; transform: scale(0.3); transform-origin: 0 0;">
+    <div id="bg" style="position:absolute;inset:0"></div>
+    <div id="els" style="position:absolute;inset:0"></div>
+    <div id="accessibility_dom-0" style="position:absolute;left:0;top:0;width:0;height:0;pointer-events:none"><p><strong>Harbor Lights Festival</strong></p></div>
+  </div>
+</div>
+<div id="handles"></div>
+
+<script>
+// A small stand-in for Canva's editor, built from the control names and DOM
+// shapes seen in a real run: a scaled page container, elements as absolutely
+// positioned boxes, a hidden screen-reader copy, resize handles, Position ›
+// Arrange/Layers, color search, transparency, font picker, File menu.
+const S = {
+  bg: '#2b6cb0', title: 'Harbor Lights Festival', selected: null, panel: null, tab: 'Arrange', ratio: false, colorFor: null, transp: false, editing: null, n: 0,
+  els: [
+    { id: 'r', kind: 'rect', x: 50, y: 113, w: 980, h: 230, fill: '#ffffff', opacity: 0.8 },
+    { id: 't', kind: 'text', x: 116, y: 172, w: 846, h: 112, text: 'Harbor Lights Festival', font: 'Roboto Condensed', size: 72, bold: true, color: '#ffffff', align: 'center', opacity: 1 },
+    { id: 'c', kind: 'circle', x: 840, y: 1110, w: 200, h: 200, fill: '#ffd166', opacity: 1 },
+  ],
+};
+const NAMES = { '#ffffff': 'White', '#2b6cb0': 'Blue', '#ffd166': 'Pastel orange', '#000000': 'Black', '#c8d1d9': 'Light azure' };
+const colorName = (h) => NAMES[h] || 'Custom ' + h;
+const FONTS = ['Canva Sans', 'Roboto', 'Roboto Condensed', 'Roboto Mono', 'Open Sans', 'Montserrat'];
+const $ = (s) => document.querySelector(s);
+const sel = () => S.els.find((e) => e.id === S.selected);
+const h = (tag, attrs = {}, kids = []) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'text') e.textContent = v;
+    else if (v === true) e.setAttribute(k, '');
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const c of kids) e.appendChild(c);
+  return e;
+};
+// A size field: shows "N px", drops the unit while focused (a tick later, like React), commits on Enter.
+const pxField = (label, value, set, disabled) => {
+  const i = h('input', { 'aria-label': label, value: value == null ? '--' : `${+value.toFixed(1)} px`, disabled: !!disabled });
+  i.addEventListener('focus', () => setTimeout(() => { i.value = i.value.replace(/\s*px$/, ''); }, 0));
+  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const v = parseFloat(i.value); if (!isNaN(v)) set(v); render(); } });
+  return i;
+};
+const enterField = (attrs, onEnter, onInput) => {
+  const i = h('input', attrs);
+  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') onEnter(i.value); });
+  if (onInput) i.addEventListener('input', () => onInput(i.value));
+  return i;
+};
+const btn = (label, onclick, extra = {}) => h('button', { 'aria-label': label, text: extra.text ?? label, onclick, ...extra });
+
+function select(id) { S.selected = id; S.transp = false; if (S.editing && S.editing !== id) stopEditing(); render(); }
+function stopEditing() {
+  const e = S.els.find((x) => x.id === S.editing);
+  const p = document.querySelector(`[data-id="${S.editing}"] p`);
+  if (e && p) e.text = p.innerText.trim();
+  S.editing = null;
+}
+
+function renderPage() {
+  $('#bg').style.background = S.bg;
+  const box = $('#els');
+  for (const e of S.els) {
+    let w = box.querySelector(`[data-id="${e.id}"]`);
+    if (S.editing === e.id && w) continue;
+    const fresh = !w;
+    if (fresh) w = h('div', { class: 'el', 'data-id': e.id });
+    Object.assign(w.style, { left: e.x + 'px', top: e.y + 'px', width: e.w + 'px', height: e.h + 'px' });
+    w.replaceChildren();
+    if (e.kind === 'text') {
+      const span = h('span', { text: e.text });
+      Object.assign(span.style, { color: e.color, fontWeight: e.bold ? 700 : 400, fontFamily: 'Hash_' + e.font.replace(/\s/g, '') });
+      const p = h('p', {}, [span]);
+      Object.assign(p.style, { margin: 0, fontSize: e.size / 0.75 + 'px', textAlign: e.align, lineHeight: 1.1 });
+      const c = h('div', {}, [p]);
+      Object.assign(c.style, { width: '100%', height: '100%', opacity: e.opacity });
+      w.appendChild(c);
+    } else {
+      const inner = h('div');
+      Object.assign(inner.style, { width: '100%', height: '100%', background: e.fill, opacity: e.opacity, borderRadius: e.kind === 'circle' ? '50%' : '0' });
+      w.appendChild(inner);
+    }
+    w.onclick = () => select(e.id);
+    box.appendChild(w); // DOM order = stacking order, back to front
+  }
+  for (const w of [...box.children]) if (!S.els.some((e) => e.id === w.dataset.id)) w.remove();
+}
+
+function renderHandles() {
+  const hs = $('#handles');
+  hs.replaceChildren();
+  const e = sel();
+  if (!e || S.editing) return;
+  const r = $('#page').getBoundingClientRect(), k = 0.3;
+  const L = r.left + e.x * k, T = r.top + e.y * k, R = L + e.w * k, B = T + e.h * k, cx = (L + R) / 2, cy = (T + B) / 2;
+  for (const [name, x, y] of [['top edge', cx, T], ['left edge', L, cy], ['right edge', R, cy], ['bottom edge', cx, B],
+    ['top left corner', L, T], ['top right corner', R, T], ['bottom left corner', L, B], ['bottom right corner', R, B]]) {
+    const b = h('button', { class: 'handle', 'aria-label': 'Resize selection from ' + name });
+    b.style.left = x + 'px'; b.style.top = y + 'px';
+    hs.appendChild(b);
+  }
+}
+
+// Re-render a panel without losing the focused field (Canva keeps its inputs).
+function keepFocus(box, build) {
+  const a = document.activeElement;
+  const label = box.contains(a) && a.tagName === 'INPUT' ? a.getAttribute('aria-label') : null;
+  build();
+  if (label) [...box.querySelectorAll('input')].find((i) => i.getAttribute('aria-label') === label)?.focus();
+}
+
+function renderToolbar() {
+  const tb = $('#toolbar');
+  tb.replaceChildren();
+  const e = sel();
+  const posBtn = () => btn(S.panel === 'position' ? 'Position panel open' : 'Position', () => { S.panel = S.panel === 'position' ? null : 'position'; render(); }, { text: 'Position' });
+  if (S.selected === 'page') {
+    tb.append(btn('Current color ' + colorName(S.bg), () => openColor('fill')), posBtn());
+  } else if (e) {
+    if (e.kind === 'text') {
+      tb.append(
+        btn('Toggle font selector, current font: ' + e.font, () => { S.panel = 'font'; render(); }),
+        enterField({ role: 'combobox', 'aria-label': 'Font size', value: String(e.size), 'aria-expanded': 'false' }, (v) => { e.size = +v; render(); }),
+        btn('Current text color ' + colorName(e.color), () => openColor('text')),
+        btn('Bold', () => { e.bold = !e.bold; render(); }, { 'aria-pressed': String(e.bold) }),
+        btn('Toggle text alignment, current alignment: ' + e.align[0].toUpperCase() + e.align.slice(1), () => {
+          const order = ['left', 'center', 'right', 'justify'];
+          e.align = order[(order.indexOf(e.align) + 1) % 4]; render();
+        }),
+      );
+    } else tb.append(btn('Current color ' + colorName(e.fill), () => openColor('fill')));
+    tb.append(btn('Transparency', () => { S.transp = !S.transp; render(); }, { 'aria-expanded': String(S.transp) }));
+    if (S.transp) tb.append(enterField({ role: 'spinbutton', 'aria-label': 'Transparency', value: String(Math.round(e.opacity * 100)) }, (v) => { e.opacity = +v / 100; render(); }));
+    tb.append(posBtn(), btn('Lock position and appearance', () => { e.locked = true; }), btn('Delete', () => { S.els = S.els.filter((x) => x !== e); S.selected = null; render(); }));
+  }
+}
+function openColor(which) { S.panel = 'color'; S.colorFor = which; S.results = null; render(); }
+
+function renderSide() {
+  const side = $('#side');
+  side.replaceChildren();
+  const e = sel();
+  if (S.panel === 'position') {
+    const t = (name) => h('div', { role: 'tab', 'aria-label': `${name} ${name}`, 'aria-selected': String(S.tab === name), 'aria-controls': 'pp-' + name, text: name, onclick: () => { S.tab = name; render(); } });
+    side.append(btn('Close', () => { S.panel = null; render(); }), h('div', { role: 'tablist' }, [t('Arrange'), t('Layers')]));
+    if (S.tab === 'Arrange') {
+      const i = S.els.indexOf(e), none = !e;
+      const move = (to) => { S.els.splice(i, 1); S.els.splice(to, 0, e); render(); };
+      const ratio = btn('Ratio', () => { S.ratio = !S.ratio; render(); }, { 'aria-pressed': String(S.ratio), disabled: none });
+      const setW = (v) => { if (S.ratio) e.h *= v / e.w; e.w = v; };
+      const setH = (v) => { if (S.ratio) e.w *= v / e.h; e.h = v; };
+      side.append(h('div', { role: 'tabpanel', id: 'pp-Arrange' }, [
+        h('div', { class: 'row' }, [
+          btn('Forward', () => move(i + 1), { disabled: none || i === S.els.length - 1 }), btn('Backward', () => move(i - 1), { disabled: none || i === 0 }),
+          btn('To front', () => move(S.els.length - 1), { disabled: none || i === S.els.length - 1 }), btn('To back', () => move(0), { disabled: none || i === 0 }),
+        ]),
+        h('div', { class: 'row' }, [pxField('Width', e?.w, setW, none), pxField('Height', e?.h, setH, none || e.kind === 'text'), ratio]),
+        h('div', { class: 'row' }, [pxField('X', e?.x, (v) => { e.x = v; }, none), pxField('Y', e?.y, (v) => { e.y = v; }, none)]),
+      ]));
+    } else {
+      const rows = [...S.els].reverse().map((x) => h('div', { class: 'row' }, [
+        h('span', { role: 'none', text: x.kind === 'text' ? x.text : '' }),
+        btn(x.kind === 'text' ? x.text : 'Shape', () => select(x.id)),
+      ]));
+      side.append(h('div', { role: 'tabpanel', id: 'pp-Layers' }, [
+        h('div', { role: 'radiogroup', 'aria-label': 'All Overlapping' }, [h('div', { role: 'radio', 'aria-checked': 'true', text: 'All' })]),
+        ...rows, btn('Background', () => select('page')),
+      ]));
+    }
+  } else if (S.panel === 'color') {
+    const apply = (hex) => { if (S.selected === 'page') S.bg = hex; else if (S.colorFor === 'text') e.color = hex; else e.fill = hex; render(); };
+    side.append(btn('Close', () => { S.panel = null; render(); }),
+      enterField({ type: 'search', 'aria-label': S.colorFor === 'text' ? 'Search text colors' : 'Search fill colors', value: S.query || '' }, (v) => {
+        S.query = v; S.results = /^#[0-9a-f]{6}$/i.test(v) ? [v.toLowerCase(), '#05abc4', '#ffffff'] : []; render();
+      }),
+      ...['#ffffff', '#000000'].map((x) => btn(x, () => apply(x))),
+      ...(S.results || []).map((x) => btn(x, () => apply(x))));
+  } else if (S.panel === 'font') {
+    side.append(btn('Close', () => { S.panel = null; render(); }),
+      enterField({ type: 'search', 'aria-label': 'Try “Calligraphy” or “Open Sans”' }, () => {}, (v) => {
+        const box = $('#fontResults');
+        box.replaceChildren(...FONTS.filter((f) => f.toLowerCase().includes(v.toLowerCase())).map((f) => btn(f, () => { e.font = f; render(); })));
+      }), h('div', { id: 'fontResults' }));
+  } else if (S.panel === 'elements') {
+    side.append(enterField({ 'aria-label': 'Search elements', value: S.elQuery || '' }, (v) => { S.elQuery = v; render(); }));
+    if (S.elQuery) for (const word of ['Square', 'Circle', 'Rounded Square']) {
+      side.append(btn(`Add ${word} graphic to the canvas`, () => {
+        const id = 'n' + (++S.n);
+        S.els.push({ id, kind: word === 'Circle' ? 'circle' : 'rect', x: 378, y: 513, w: 324, h: 324, fill: '#c8d1d9', opacity: 1 });
+        select(id);
+      }));
+    }
+  } else if (S.panel === 'text') {
+    side.append(btn('Add a text box', () => {
+      const id = 'n' + (++S.n);
+      S.els.push({ id, kind: 'text', x: 340, y: 600, w: 400, h: 60, text: 'Add a little bit of body text', font: 'Canva Sans', size: 24, bold: false, color: '#000000', align: 'center', opacity: 1 });
+      S.selected = id;
+      render();
+      // Editing starts at once, as in Canva.
+      const p = document.querySelector(`[data-id="${id}"] p`);
+      p.setAttribute('contenteditable', 'true'); p.setAttribute('role', 'textbox'); p.setAttribute('aria-label', 'Text editor in Text');
+      S.editing = id;
+      p.focus();
+      renderHandles();
+    }));
+  }
+}
+
+function renderFile() {
+  const m = $('#filemenu');
+  if (m.hidden) return;
+  m.replaceChildren(
+    enterField({ 'aria-label': 'Design title', value: S.title }, (v) => { S.title = v; document.title = `${v} - 1080 × 1350px`; render(); }),
+    h('div', { role: 'menuitem', text: 'Download', tabindex: '0' }),
+  );
+}
+
+function render() {
+  renderPage(); renderHandles();
+  keepFocus($('#toolbar'), renderToolbar); keepFocus($('#side'), renderSide); keepFocus($('#filemenu'), renderFile);
+}
+$('#fileBtn').onclick = () => { $('#filemenu').hidden = !$('#filemenu').hidden; render(); };
+// A click on the empty page selects the page itself.
+$('#els').addEventListener('click', (e) => { if (e.target.id === 'els') select('page'); });
+$('#tabElements').onclick = () => { S.panel = 'elements'; render(); };
+$('#tabText').onclick = () => { S.panel = 'text'; render(); };
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (S.editing) { stopEditing(); render(); return; }
+  if (!$('#filemenu').hidden) { $('#filemenu').hidden = true; render(); }
+});
+render();
+</script>
+<script src="../keys.js"></script>
+<script src="../content.js"></script>
+<script type="module" src="canva-checks.js"></script>
+</body>
+</html>

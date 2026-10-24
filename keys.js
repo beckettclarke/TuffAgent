@@ -65,5 +65,28 @@ globalThis.TuffKeys ??= (() => {
     return out;
   }
 
-  return { parse, charKey };
+  /**
+   * Does a field's value match what was typed? Fields add units ("230 px"), round
+   * decimals (980 → "980.4 px"), group digits ("5,230"), apply masks ("(555)
+   * 123-4567") or complete inline ("new y" → "New York"). A different number, or
+   * old text left in front of the new ("5230 px" for "230"), is a mismatch.
+   * replace=false: the typed text was appended, so the value must end with it.
+   */
+  function sameValue(shown, typed, replace = true) {
+    const s = String(shown ?? '').trim(), t = String(typed ?? '').trim();
+    if (s === t) return true;
+    const num = (v) => {
+      const m = v.replace(/(\d),(?=\d{3}\b)/g, '$1').match(/^([-+]?\d*\.?\d+)\s*(px|pt|%|°|deg|em|rem|in|cm|mm|x)?$/i);
+      return m ? { n: parseFloat(m[1]), dec: (m[1].split('.')[1] || '').length } : null;
+    };
+    const a = replace ? num(s) : null, b = replace ? num(t) : null;
+    if (a && b) return Math.abs(a.n - b.n) <= 0.5 * 10 ** -Math.min(a.dec, b.dec) + 1e-9;
+    if (a || b) return false;
+    const low = (v) => v.toLowerCase().replace(/\s+/g, ' ');
+    if (replace ? low(s).startsWith(low(t)) : low(s).endsWith(low(t))) return true;
+    const digits = (v) => v.replace(/\D/g, '');
+    return replace && digits(t).length >= 3 && !/[a-z]/i.test(t) && digits(s) === digits(t);
+  }
+
+  return { parse, charKey, sameValue };
 })();

@@ -221,12 +221,16 @@
   }
   const isField = (el) => !!el && (tag(el) === 'input' || tag(el) === 'textarea' || tag(el) === 'select' || el.isContentEditable);
 
+  // Hidden copies of a page's content kept for screen readers (Canva mirrors every
+  // text box): reading them as well doubles each text and aims clicks at nothing.
+  const MIRROR = /^accessibility_dom/;
+
   function* elements(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
     let node = walker.currentNode;
     if (node.nodeType !== 1) node = walker.nextNode();
     while (node) {
-      if (node.id === HOST_ID) { node = nextSkipping(walker, node); continue; }
+      if (node.id === HOST_ID || MIRROR.test(node.id)) { node = nextSkipping(walker, node); continue; }
       const t = node.tagName;
       if (t === 'SCRIPT' || t === 'STYLE' || t === 'NOSCRIPT' || t === 'TEMPLATE' || t === 'SVG' || t === 'svg' || t === 'HEAD') {
         node = nextSkipping(walker, node); continue;
@@ -493,6 +497,15 @@
 
   // Submenu arrows ("Roboto ►") and quotes don't count toward a label.
   const norm = (s) => clean(s).toLowerCase().replace(/[‘’'"“”…►▸▶]|\.\.\.$/g, '').replace(/\s+/g, ' ').trim();
+  // A label as a match key: menu items carry their shortcut ("Copy ⌘C", "Bold Ctrl+B"),
+  // which isn't part of the name a person would say.
+  const labelKey = (s) => norm(s).replace(/\s+(?:(?:[⌘⌥⇧⌃]|(?:ctrl|alt|shift|cmd|meta|option)\+)+\s*[\w.,/;=+`\\[\]-]{1,6})$/i, '');
+
+  // Words in a label that mean the control changes or destroys something. A
+  // partial match carrying one ("Position" → "Lock position and appearance",
+  // "Bookmark" → "Move to previous bookmark") is never clicked on a guess.
+  const RISKY = /\b(lock|unlock|delete|remove|move to|trash|discard|clear|reset|erase|archive|uninstall|unsubscribe|leave|sign out|log out|revoke|disconnect|replace all|change all|apply to all)\b/i;
+  const risky = (name, want) => RISKY.test(name) && !RISKY.test(want);
 
   // Words in a descriptive query ("Roboto option in the font list") that say
   // what kind of thing to look for, not what its label says.
@@ -510,6 +523,12 @@
     }
     if (role === 'heading') return nameOf(el, role);
     return clean(ownText(el)).slice(0, 300);
+  }
+  // Each thing an element is called on its own, for exact matching: a field's
+  // name and its placeholder are two labels, not one "City City".
+  function labelsOf(el, role, interactive) {
+    if (!interactive || !isField(el)) return [labelOf(el, role, interactive)];
+    return [nameOf(el, role), el.getAttribute('placeholder') || ''].filter(Boolean);
   }
 
   function find({ query, limit = 25 }) {
@@ -538,7 +557,9 @@
       const nm = name.toLowerCase().replace(/[►▸▶]/g, '').trim();
       const off = viewRect(el) ? '' : ' ·off';
       const s = (interactive ? line(el, role || tag(el), nameOf(el, role)) : `[${refOf(el)}] ${role === 'heading' ? line(el, role, name).split('] ')[1] : `text "${clip(name, 120)}"`}`) + off;
-      if (exact) hits.push({ score: (interactive ? 2 : 0) + (nm === q ? 3 : 0) + (hay.startsWith(q) ? 1 : 0) + (off ? 0 : 0.5), s });
+      // A label that is exactly the query leads, whatever else contains its words.
+      const same = labelsOf(el, role, interactive).some((l) => labelKey(l) === norm(query));
+      if (exact) hits.push({ score: (same ? 10 : 0) + (interactive ? 2 : 0) + (nm === q ? 3 : 0) + (hay.startsWith(q) ? 1 : 0) + (off ? 0 : 0.5), s });
       else near.push({ score: got / label.length * 4 + (nm === phrase ? 6 : nm.startsWith(phrase) ? 2 : label.includes(nm) ? 3 : 0) + (roleWant.includes(role) ? 2 : 0) + (interactive ? 1 : 0), s });
     }
     const top = (list) => list.sort((a, b) => b.score - a.score).slice(0, limit).map((h) => h.s).join('\n');
@@ -552,13 +573,17 @@
 
   // The element a label names, so the model can say target:"Add to cart",
   // near:"Blue T-shirt" instead of reading refs or guessing coordinates.
-  // Exact name beats starts-with beats contains; controls beat text; near picks
-  // the match closest to an anchor text (same row, list item or card first);
-  // nth picks among equally good matches in page order.
+  // An exact label always wins. A partial one (starts with, whole word,
+  // contains) only counts when it is the only candidate, never when it would
+  // lock, delete or move something the label didn't name, and the result says
+  // which element it was. Controls beat text; near picks the match closest to
+  // an anchor text (same row, list item or card first); nth picks among equally
+  // good matches in page order.
   function byLabel({ target, role, near, nth }) {
     const want = norm(target);
     if (!want) throw new Error('Empty target');
     const words = want.split(' ');
+    const wordRe = new RegExp(`\\b${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
     const roleWant = role ? String(role).toLowerCase() : null;
     const cands = [];
     for (const el of elements(document.body || document.documentElement)) {
@@ -566,15 +591,17 @@
       const interactive = isInteractive(el, r);
       if (!interactive && r !== 'heading' && ((INLINE.has(el.tagName) && el.tagName !== 'LABEL') || el.closest(CONTROL_SEL))) continue;
       if (roleWant && r !== roleWant && tag(el) !== roleWant && !(roleWant === 'textbox' && isField(el))) continue;
-      const name = norm(labelOf(el, r, interactive));
+      const labels = labelsOf(el, r, interactive);
+      const name = norm(labels.join(' '));
       if (!name) continue;
-      let s = name === want ? 100 : name.startsWith(want) ? 60 : new RegExp(`\\b${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(name) ? 45
+      const exact = labels.some((l) => labelKey(l) === want);
+      let s = exact ? 100 : name.startsWith(want) ? 60 : wordRe.test(name) ? 45
         : name.includes(want) ? 30 : words.length > 1 && words.every((w) => name.includes(w)) ? 15 : 0;
       if (!s || !visible(el)) continue;
       if (interactive) s += 20;
       if (viewRect(el)) s += 3;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') s -= 40;
-      cands.push({ el, s });
+      cands.push({ el, s, exact });
     }
     // A control and the text inside it are one match; so are a container whose
     // words include the label and the element that is the label. Keep the better
@@ -593,8 +620,21 @@
       const hint = find({ query: target, limit: 6 });
       throw new Error(`Nothing visible is labeled "${target}"${roleWant ? ` (role ${roleWant})` : ''}. ${/^No matches/.test(hint) ? 'Read the page for the exact label.' : `Closest:\n${hint}`}`);
     }
-    const best = Math.max(...uniq.map((c) => c.s));
-    let tier = uniq.filter((c) => c.s >= best - 5);
+    const exact = uniq.some((c) => c.exact);
+    const pool = exact ? uniq.filter((c) => c.exact) : uniq.sort((a, b) => b.s - a.s);
+    const options = () => pool.slice(0, 8).map((c) => describe(c.el)).join('\n');
+    if (!exact && pool.length > 1 && !near && !nth) {
+      throw new Error(`Nothing is labeled exactly "${target}", and ${pool.length} labels contain it — not clicked:\n${options()}\nPass the full label as target (or near/nth to choose).`);
+    }
+    // Which partial match was used, or why it wasn't: the model must know what it hit.
+    const chosen = (el, note) => {
+      if (exact) return { el, note };
+      const name = nameOf(el, roleOf(el)) || clean(ownText(el));
+      if (risky(name, want)) throw new Error(`Nothing is labeled exactly "${target}". The closest is ${describe(el)}, which would change something else — not clicked. Options:\n${options()}`);
+      return { el, note: `${note} (no exact match for "${target}"; used partial match "${clip(name, 60)}")` };
+    };
+    const best = Math.max(...pool.map((c) => c.s));
+    let tier = pool.filter((c) => c.s >= best - 5);
     if (near) {
       const anchors = byLabelAnchors(near);
       if (!anchors.length) throw new Error(`near: nothing visible says "${near}"`);
@@ -604,17 +644,17 @@
         const ra = rectOf(a), re = rectOf(el);
         return Math.hypot(ra.cx - re.cx, (ra.cy - re.cy) * 2) + 1;
       }));
-      // Near outranks a slightly better label: "Edit" in the right row beats "Edit profile" elsewhere.
-      tier = uniq.filter((c) => c.s >= best - 45).map((c) => ({ ...c, d: d(c.el) })).sort((a, b) => a.d - b.d || b.s - a.s);
-      return { el: tier[0].el, note: '' };
+      // Among the labels left, the one in the anchor's row, card or list item wins.
+      tier = pool.filter((c) => c.s >= best - 45).map((c) => ({ ...c, d: d(c.el) })).sort((a, b) => a.d - b.d || b.s - a.s);
+      return chosen(tier[0].el, '');
     }
     if (nth) {
       const c = tier[Math.max(0, Math.min(tier.length, +nth) - 1)];
-      return { el: c.el, note: tier.length > 1 ? ` (match ${Math.min(tier.length, +nth)} of ${tier.length})` : '' };
+      return chosen(c.el, tier.length > 1 ? ` (match ${Math.min(tier.length, +nth)} of ${tier.length})` : '');
     }
     const pick = tier.find((c) => viewRect(c.el)) || tier[0];
     const others = tier.filter((c) => c !== pick).slice(0, 6).map((c) => refOf(c.el));
-    return { el: pick.el, note: others.length ? ` (${tier.length} matches for "${target}"; also ${others.join(', ')} — pass near or nth to choose)` : '' };
+    return chosen(pick.el, others.length ? ` (${tier.length} matches for "${target}"; also ${others.join(', ')} — pass near or nth to choose)` : '');
   }
   function byLabelAnchors(text) {
     const want = norm(text);
@@ -794,6 +834,17 @@
     return { x: r.cx, y: r.cy, cover };
   }
 
+  // The open list, menu or popover an element belongs to: when one of these covers
+  // the target, the click must not go through to the hidden element underneath.
+  const POPUP_SEL = '[role=listbox],[role=menu],[role=tooltip],[role=tree],[popover],[role=dialog]:not([aria-modal=true])';
+  const POPUP_CLASS = /(^|[\s_-])(dropdown|popover|popup|menu|listbox)([\s_-]|$)/i;
+  function popupOf(el) {
+    for (let e = el, k = 0; e && e.nodeType === 1 && k < 12; e = e.parentElement || e.parentNode?.host, k++) {
+      if (e.matches(POPUP_SEL) || POPUP_CLASS.test(typeof e.className === 'string' ? e.className : '')) return e;
+    }
+    return null;
+  }
+
   // The control a viewport point means: the interactive element under it, or one
   // within a few pixels when the point lands on padding, a gap or an icon's edge.
   // Text, editors and canvases keep the exact point (caret placement, drawings).
@@ -832,7 +883,8 @@
         fx.cursor(p.x, p.y);
       }
       const cover = p.cover && p.cover.id !== HOST_ID ? ` (warning: covered by ${describe(p.cover)})` : '';
-      return { el, x: p.x, y: p.y, lx: p.x - r.ox, ly: p.y - r.oy, covered: !!cover, desc: describe(el) + lastNote + cover };
+      const popup = cover ? popupOf(p.cover) : null;
+      return { el, x: p.x, y: p.y, lx: p.x - r.ox, ly: p.y - r.oy, covered: !!cover, popup: popup ? describe(popup) : '', desc: describe(el) + lastNote + cover };
     }
     if (t.x == null || t.y == null) throw new Error('needs ref, target (visible label), selector, or x/y');
     const x = +t.x, y = +t.y;
@@ -860,9 +912,20 @@
   // A native <select> opens a popup that clicks and keys can't reach.
   const selectHint = (el) => (tag(el) === 'select' ? '\nThis is a native <select>: use select_option (or type) with the option text instead of clicking.' : '');
 
+  // An open list or menu over the target: Escape closes it (a click would land on
+  // the list, or on the hidden element through it). Still covered: an error.
+  async function clearPopup(t, a) {
+    if (!a.popup) return a;
+    press(deepActive() || document.body, TuffKeys.parse('Escape')[0]);
+    await settle(60, 400);
+    const b = aim(t);
+    if (b.popup) throw new Error(`${b.desc}: an open list or menu (${b.popup}) covers it and Escape did not close it. Pick an option in it or close it first.`);
+    return { ...b, desc: `${b.desc} (closed an open list that covered it)` };
+  }
+
   // Synthetic click: the event sequence a mouse makes, dispatched on the element.
   async function click(t = {}) {
-    const a = aim(t);
+    const a = await clearPopup(t, aim(t));
     begin();
     let { el } = a;
     const doc = el.ownerDocument;
@@ -888,7 +951,7 @@
     const a = aim(t);
     begin();
     if (!t.hover) fx.ripple(a.x, a.y);
-    return { x: a.x, y: a.y, desc: a.desc + selectHint(a.el), covered: a.covered };
+    return { x: a.x, y: a.y, desc: a.desc + selectHint(a.el), covered: a.covered, popup: a.popup };
   }
 
   // ── Drag ──
@@ -912,29 +975,42 @@
       to = { x, y, desc: `(${Math.round(x)}, ${Math.round(y)}), ${+t.dx || 0}/${+t.dy || 0}px away` };
     } else throw new Error('drag needs a destination: to_ref, to_target, to_x/to_y, or dx/dy');
     const r = rectOf(from.el);
-    dragged = { el: from.el, ref: refOf(from.el), x: r.x, y: r.y, parent: from.el.parentElement, index: [...(from.el.parentElement?.children || [])].indexOf(from.el) };
+    dragged = { el: from.el, ref: refOf(from.el), x: r.x, y: r.y, parent: from.el.parentElement, index: [...(from.el.parentElement?.children || [])].indexOf(from.el),
+      sel: String(from.el.ownerDocument.getSelection() || ''), value: valueNow(from.el) };
     begin();
     return { from, to };
   }
+  // A slider's or field's value, to tell a drag that changed it from one that did nothing.
+  const valueNow = (el) => ('value' in el && tag(el) !== 'button' ? String(el.value) : el.getAttribute('aria-valuenow'));
   function dragPoints(t) {
     const { from, to } = dragEnds(t);
     return { x1: from.x, y1: from.y, x2: to.x, y2: to.y, desc: `${from.desc} to ${to.desc}` };
   }
-  // Did the dragged element move? Sortable lists re-render, so a vanished
-  // element is looked up again by its ref.
+  // Did the drag do anything? The element moved (sortable lists re-render, so a
+  // vanished element is looked up again by its ref), a slider's value changed,
+  // or a text selection was made. moved=false means none of these.
   function dragCheck() {
     const d = dragged;
     dragged = null;
-    if (!d) return '';
+    if (!d) return { text: '', moved: true };
     const el = d.el.isConnected ? d.el : byRef(d.ref);
-    if (!el) return ' (the dragged element was re-rendered; check the result)';
+    if (!el) return { text: ' (the dragged element was re-rendered; check the result)', moved: true };
     const r = rectOf(el);
     const idx = [...(el.parentElement?.children || [])].indexOf(el);
-    if (el.parentElement !== d.parent) return ` (moved to a new container: now inside ${describe(el.parentElement)})`;
-    if (idx !== d.index) return ` (moved from position ${d.index + 1} to ${idx + 1} in its list)`;
-    if (Math.abs(r.x - d.x) > 3 || Math.abs(r.y - d.y) > 3) return ` (moved by ${Math.round(r.x - d.x)}, ${Math.round(r.y - d.y)} px)`;
-    return ' (the dragged element did not move — check the result)';
+    const moved = (text) => ({ text, moved: true });
+    if (el.parentElement !== d.parent) return moved(` (moved to a new container: now inside ${describe(el.parentElement)})`);
+    if (idx !== d.index) return moved(` (moved from position ${d.index + 1} to ${idx + 1} in its list)`);
+    if (Math.abs(r.x - d.x) > 3 || Math.abs(r.y - d.y) > 3) return moved(` (moved by ${Math.round(r.x - d.x)}, ${Math.round(r.y - d.y)} px)`);
+    const v = valueNow(el);
+    if (v !== d.value) return moved(` (value ${d.value ?? '—'} → ${v ?? '—'})`);
+    const sel = String(el.ownerDocument.getSelection() || '');
+    if (sel && sel !== d.sel) return moved(` (selected “${clip(clean(sel), 80)}”)`);
+    return { text: ' (the dragged element did not move)', moved: false };
   }
+  // A drag that moved nothing and changed nothing on screen is a failure, not a step.
+  const dragFailed = (desc, check, diff) => (!check.moved && !/\n\n(Changed|New on screen):/.test(diff)
+    ? new Error(`Dragged ${desc}, but nothing moved: the element is where it was and nothing on the page changed. If the app has number fields for size or position (W, H, X, Y), type the values there instead of dragging.`)
+    : null);
   // Native HTML5 drag source: draggable="true", a link, an image, or selected text.
   function dragSource(el) {
     const d = el.closest?.('[draggable]');
@@ -990,7 +1066,10 @@
     } else if (end.el) { mouse(end.el, 'pointerup', end.lx, end.ly, mods); mouse(end.el, 'mouseup', end.lx, end.ly, { detail: 1, ...mods }); }
     const how = dt ? (dropped ? ' (drag-and-drop: dropped)' : ' (drag-and-drop: target did not accept the drop)') : '';
     const diff = await finish(100, 900);
-    return `Dragged ${from.desc} to ${to.desc}${how}${dragCheck()}` + diff;
+    const check = dragCheck();
+    const fail = dragFailed(`${from.desc} to ${to.desc}`, check, diff);
+    if (fail) throw fail;
+    return `Dragged ${from.desc} to ${to.desc}${how}${check.text}` + diff;
   }
 
   // ── Fields ──
@@ -1011,6 +1090,11 @@
     const active = deepActive();
     let el = resolve(t);
     let own = !!el;
+    // A ref that now points at something hidden (a re-rendered field, a screen-reader
+    // copy) would take the text where nobody sees it.
+    if (el && t.ref && !t.anyElement && !visible(el) && !within(el, active)) {
+      throw new Error(`${describe(el)} is no longer shown on the page, so typing there would go nowhere. read_page again, or aim with target (the field's label).`);
+    }
     if (el && tag(el) === 'label' && el.control) el = el.control;
     if (el && !isField(el)) {
       const inner = el.querySelector?.('input:not([type=hidden]),textarea,select,[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"]');
@@ -1034,7 +1118,9 @@
     const kind = tag(el) === 'select' ? 'select' : tag(el) === 'input' && VALUE_TYPES.has(el.type) ? 'value'
       : tag(el) === 'input' || tag(el) === 'textarea' ? 'plain' : 'rich';
     let cleared = false;
-    const clear = t.clear ?? own;
+    // Typing replaces a field's text unless told otherwise; only rich editors
+    // without a named field (Docs at the caret) insert where the cursor is.
+    const clear = t.clear ?? (own || kind === 'plain');
     if (kind === 'plain' || kind === 'rich') {
       if (clear) {
         if (kind === 'plain') { el.select?.(); cleared = !!el.value; }
@@ -1050,7 +1136,16 @@
     // Fields that suggest as you type need longer to show their list.
     const suggest = roleOf(el) === 'combobox' || el.getAttribute('aria-autocomplete') || el.hasAttribute('list') ||
       el.type === 'search' || /listbox|menu|dialog|grid|tree/.test(el.getAttribute('aria-haspopup') || '');
-    return { el, cleared, kind, plain: kind === 'plain', suggest: !!suggest, ref: refOf(el), password: el.type === 'password', desc };
+    return { el, cleared, kind, plain: kind === 'plain', replace: clear, suggest: !!suggest, ref: refOf(el), password: el.type === 'password', desc };
+  }
+  // Select the prepared field's whole text again, after the page's focus handlers
+  // had their turn: some reformat the value on focus ("378 px" → "378"), which
+  // drops the selection and leaves the caret at the end, so typing appends.
+  async function reselect() {
+    const el = lastField;
+    await settle(40, 250);
+    try { el?.select?.(); } catch {}
+    return true;
   }
 
   // date/time/color/range inputs take a value string; accept common spellings.
@@ -1087,43 +1182,47 @@
     }
     return `Set ${describe(el)} to "${el.value}"`;
   }
-  // After typing: does the field hold what was typed? Masks and pickers reformat,
-  // and some scripts reject or eat input.
-  function fieldCheck(expect) {
+  // After typing: does the field hold what was typed (units, rounding and masks
+  // allowed)? Fields that re-select or reformat as you type, and scripts that eat
+  // input, leave something else ("72" → "2", "230" → "5230 px").
+  function fieldState(expect, replace = true) {
     const el = lastField;
-    if (!el || !('value' in el) || tag(el) === 'select' || !expect) return '';
+    if (!el || !('value' in el) || tag(el) === 'select') return { ok: true };
     const v = el.value;
-    if (v.includes(expect)) return '';
-    if (el.type === 'password') return v.length === expect.length ? '' : ` (note: the field holds ${v.length} characters, not ${expect.length})`;
-    return ` (note: the field now shows "${clip(v, 80)}")`;
+    if (el.type === 'password') return { ok: replace ? v.length === expect.length : v.length >= expect.length, shown: `${v.length} characters` };
+    return { ok: TuffKeys.sameValue(v, expect, replace), shown: clip(v, 80) };
   }
+  const typeFailed = (text, desc, st) => new Error(`Typed "${clip(text, 60)}" into ${desc}, but the field shows "${st.shown}". ` +
+    'The page changed or rejected the input. Read the field, then type the whole value again (or use the app\'s own control for it).');
 
   async function type(t = {}) {
     const text = String(t.text ?? '');
-    const { el, cleared, desc, kind } = prepField(t);
+    const { el, cleared, desc, kind, replace } = prepField(t);
     const doc = el.ownerDocument;
     if (kind === 'select') return selectOption({ ref: refOf(el), value: text });
     if (kind === 'value') return setValue({ value: text }) + await finish();
     const isInput = kind === 'plain';
+    if (isInput && replace) await reselect();
     const before = isInput ? el.value : el.innerText;
     let ok = false;
     if (text) ok = doc.execCommand('insertText', false, text);
     else if (cleared) ok = doc.execCommand('delete');
     if (isInput) {
-      const expect = cleared ? text : before + text;
-      if (!ok || (text && !el.value.includes(text))) {
+      const expect = replace ? text : before + text;
+      if (!ok || !TuffKeys.sameValue(el.value, expect, true)) {
         setNative(el, expect);
         el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
       }
       el.dispatchEvent(new Event('change', { bubbles: true }));
+      const st = fieldState(text, replace);
+      if (!st.ok) throw typeFailed(text, desc, st);
     } else if (!ok && el.isContentEditable) {
       if (cleared) el.textContent = text; else el.textContent += text;
       el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
     }
-    const check = t.submit ? '' : fieldCheck(text);
     let tail = '';
     if (t.submit) { press(deepActive() || el, TuffKeys.parse('Enter')[0]); tail = ' and pressed Enter'; }
-    return `Typed "${clip(text, 60)}" into ${desc}${tail}${check}` + await finish(60, t.submit ? 700 : 400);
+    return `Typed "${clip(text, 60)}" into ${desc}${tail}` + await finish(60, t.submit ? 700 : 400);
   }
 
   // Paste text/HTML at the caret as a ClipboardEvent, the way editors (Docs,
@@ -1155,12 +1254,15 @@
   // ── Menus: find a visible item by its label, preferring open popups ──
   const MENU_ROLES = new Set(['menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'tab', 'treeitem', 'button', 'link', 'combobox', 'listbox']);
   // offscreen: also items scrolled out of view inside a long menu (they get scrolled in).
-  function menuFind({ label, roles, offscreen } = {}) {
+  // strict (the menu tool, a named pick): an exact label first; a partial one
+  // only if it is the only item that contains the words and changes nothing
+  // else — otherwise an error listing what the menu has.
+  function menuFind({ label, roles, offscreen, strict } = {}) {
     const want = norm(label);
     if (!want) throw new Error('Empty menu label');
     const ok = roles ? new Set(roles) : MENU_ROLES;
     const words = want.split(' ');
-    let best = null, bestScore = 0;
+    const cands = [];
     const popupNames = [];
     for (const el of elements(document.body || document.documentElement)) {
       const role = roleOf(el);
@@ -1172,22 +1274,37 @@
       const popup = !!el.closest('[role=menu],[role=listbox],[role=dialog],[role=tree]');
       if (popup && name && popupNames.length < 40 && !popupNames.includes(raw)) popupNames.push(raw);
       if (!name) continue;
-      let s = name === want ? 100 : name.startsWith(want) ? 60 : name.includes(want) ? 30 : words.every((w) => name.includes(w)) ? 15 : 0;
+      const exact = labelKey(raw) === want;
+      let s = exact ? 100 : name.startsWith(want) ? 60 : name.includes(want) ? 30 : words.every((w) => name.includes(w)) ? 15 : 0;
       if (!s) continue;
       if (role?.startsWith('menuitem') || role === 'option') s += 10;
       if (popup) s += 5;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') s -= 50;
-      if (s >= bestScore) { best = el; bestScore = s; } // ties: later in the DOM (popups render last)
+      cands.push({ el, s, exact, raw });
     }
-    if (!best || bestScore <= 0) {
-      throw new Error(`No visible menu item matching "${label}".` + (popupNames.length ? ` Open menu has: ${popupNames.join(' | ')}` : ''));
+    const listing = () => (popupNames.length ? ` Open menu has: ${popupNames.join(' | ')}` : '');
+    const top = (list) => list.reduce((b, c) => (!b || c.s >= b.s ? c : b), null); // ties: later in the DOM (popups render last)
+    let best = null, note = '';
+    if (!strict) best = top(cands);
+    else {
+      const exact = cands.filter((c) => c.exact);
+      const partial = cands.filter((c) => c.s > 0);
+      if (exact.length) best = top(exact);
+      else if (partial.length > 1) throw new Error(`No menu item is labeled exactly "${label}"; ${partial.length} contain it: ${partial.slice(0, 10).map((c) => `"${c.raw}"`).join(', ')}. Use the full label.`);
+      else if (partial.length) {
+        best = partial[0];
+        if (risky(best.raw, want)) throw new Error(`No menu item is labeled exactly "${label}". The only one containing it is "${best.raw}", which would do something else — not clicked.${listing()}`);
+        note = ` (no exact match for "${label}"; used "${best.raw}")`;
+      }
     }
-    const r = focusTarget(best);
-    const p = clickPoint(best, r);
+    if (!best || best.s <= 0) throw new Error(`No visible menu item matching "${label}".${listing()}`);
+    const el = best.el;
+    const r = focusTarget(el);
+    const p = clickPoint(el, r);
     begin();
-    const on = (a) => best.getAttribute(a) === 'true';
-    return { x: p.x, y: p.y, ref: refOf(best), desc: describe(best), expanded: best.getAttribute('aria-expanded'), sub: best.getAttribute('aria-haspopup'),
-      checked: on('aria-checked') || on('aria-selected') || on('aria-pressed'), exact: norm(nameOf(best, roleOf(best))) === want };
+    const on = (a) => el.getAttribute(a) === 'true';
+    return { x: p.x, y: p.y, ref: refOf(el), desc: describe(el) + note, expanded: el.getAttribute('aria-expanded'), sub: el.getAttribute('aria-haspopup'),
+      checked: on('aria-checked') || on('aria-selected') || on('aria-pressed'), exact: best.exact, names: popupNames };
   }
 
   // ── Keys ──
@@ -1534,7 +1651,8 @@
   window.__tuff = {
     snapshot, find, click, point, type, key, keyPrep, scroll, hover, selectOption, drag, dragPoints, dragCheck, paste, menuFind,
     prepField: (t) => { const info = prepField(t); delete info.el; return info; },
-    setValue, fieldCheck,
+    setValue, fieldState, reselect,
+    dragDone: (desc, diff) => { const c = dragCheck(); const f = dragFailed(desc, c, diff); if (f) throw f; return c.text; },
     text, waitFor, viewport, begin, changes,
     settle: (q, c) => finish(q, c),
     quiet: (q, c) => settle(q, c).then(() => true),

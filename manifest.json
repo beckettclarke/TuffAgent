@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TuffAgent",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A fast browser agent in your sidebar. Bring any model through OpenRouter.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -14,7 +14,8 @@
     "storage",
     "unlimitedStorage",
     "webNavigation",
-    "debugger"
+    "debugger",
+    "downloads"
   ],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },

@@ -69,6 +69,17 @@
   <iframe id="frame" srcdoc="<button onclick=&quot;this.textContent='Frame clicked'&quot;>Frame button</button>" width="200" height="50"></iframe>
 </section>
 
+<section id="strict">
+  <h2>Exact labels</h2>
+  <button>Lock position and appearance</button> <button>Save draft</button> <button>Save copy</button>
+  <label>Height <input id="hpx" value="5 px"></label>
+  <label>Eats digits <input id="eat"></label>
+  <span style="position:relative;display:inline-block"><button id="dlbtn">Download file</button><span id="typelist" role="listbox" style="position:absolute;inset:-4px;background:#fff;border:1px solid #999">MP4 Video</span></span>
+  <span id="dlstate"></span>
+  <div id="static" style="padding:8px;background:#fed;width:160px">Static block</div>
+  <div id="accessibility_dom-0"><p><strong>Mirror only text</strong></p></div>
+</section>
+
 <div class="spacer"></div>
 <footer><p>Footer fact: the answer is 42.</p></footer>
 
@@ -122,6 +133,16 @@
     list.addEventListener('dragover', (e) => e.preventDefault());
     list.addEventListener('drop', (e) => { e.preventDefault(); const t = e.target.closest('li'); if (t && src && t !== src) list.insertBefore(src, t.nextSibling); });
   })();
+  // A size field that drops its unit on focus (a tick later, as React does) and adds it back on commit.
+  const hpx = document.getElementById('hpx');
+  hpx.addEventListener('focus', () => setTimeout(() => { hpx.value = hpx.value.replace(/\s*px$/, ''); }, 0));
+  hpx.addEventListener('change', () => { if (/^\d+$/.test(hpx.value)) hpx.value += ' px'; });
+  // A field that keeps only the last character typed.
+  const eat = document.getElementById('eat');
+  eat.addEventListener('input', () => { eat.value = eat.value.slice(-1); });
+  // An open file-type list over the Download button; Escape closes it.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('typelist')?.remove(); });
+  document.getElementById('dlbtn').onclick = () => { document.getElementById('dlstate').textContent = 'Downloaded'; };
   const sh = document.getElementById('host').attachShadow({ mode: 'open' });
   sh.innerHTML = '<button id="sb">Shadow save</button>';
   sh.getElementById('sb').onclick = function () { this.textContent = 'Shadow saved'; };

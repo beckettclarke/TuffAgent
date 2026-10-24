@@ -4,17 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TuffAgent</title>
+  <link rel="stylesheet" href="https://beckettclarke.ca/css/fontawesome.css">
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
-      <linearGradient id="g-mark" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#ff9a5a"/><stop offset=".55" stop-color="#ff6a3d"/><stop offset="1" stop-color="#e2482b"/>
-      </linearGradient>
       <symbol id="i-mark" viewBox="0 0 24 24">
-        <rect x="1" y="1" width="22" height="22" rx="7" fill="url(#g-mark)"/>
-        <path d="M7 8.2h10M12.6 8.2 10.4 17.4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        <rect x="1" y="1" width="22" height="22" rx="2.5" style="fill: var(--fg)"/>
+        <path d="M6.5 7.5h11M12.9 7.5 10.4 18" style="stroke: var(--bg)" stroke-width="2.6" stroke-linecap="square" fill="none"/>
       </symbol>
     </defs>
   </svg>
@@ -24,21 +22,17 @@
       <div class="brand">
         <svg class="mark"><use href="#i-mark"/></svg>
         <span class="word">TuffAgent</span>
+        <span class="status" id="status">idle</span>
       </div>
-      <button id="modelBtn" class="model-chip" title="Choose model">
-        <span class="pdot"></span>
-        <span id="modelName" class="model-name">Model</span>
-        <svg class="chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
-      </button>
       <div class="top-actions">
         <button id="newBtn" class="icon-btn" title="New chat (⌘⇧O)">
-          <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+          <i class="fa-sharp fa-regular fa-plus" aria-hidden="true"></i>
         </button>
         <button id="historyBtn" class="icon-btn" title="History">
-          <svg viewBox="0 0 20 20"><path d="M3.8 10a6.2 6.2 0 1 0 1.9-4.5M3.5 3.8v2.6h2.6"/><path d="M10 6.8V10l2.2 1.4"/></svg>
+          <i class="fa-sharp fa-regular fa-clock-rotate-left" aria-hidden="true"></i>
         </button>
         <button id="settingsBtn" class="icon-btn" title="Settings">
-          <svg viewBox="0 0 20 20"><path d="M3.5 6h7M14.5 6h2M3.5 14h2M9.5 14h7"/><circle cx="12.5" cy="6" r="2"/><circle cx="7.5" cy="14" r="2"/></svg>
+          <i class="fa-sharp fa-regular fa-sliders" aria-hidden="true"></i>
         </button>
       </div>
       <div class="progress"></div>
@@ -46,25 +40,21 @@
 
     <main id="scroll">
       <section id="empty" class="empty">
-        <div class="halo"><svg class="mark big"><use href="#i-mark"/></svg></div>
-        <h1>What should we get done?</h1>
-        <p class="sub">TuffAgent can read pages, click, type, manage tabs and bookmarks, and run JavaScript.</p>
+        <div class="eyebrow"><span>New session</span><i></i><span>Ready</span></div>
+        <h1>What should we<br>get done?</h1>
+        <p class="sub">Reads pages, clicks, types, works your tabs and bookmarks, runs JavaScript.</p>
         <div class="suggestions">
           <button class="sugg" data-prompt="Summarize this page in a few bullet points.">
-            <span class="si"><svg viewBox="0 0 20 20"><path d="M5 5.5h10M5 9.5h10M5 13.5h6"/></svg></span>
-            <span>Summarize this page</span>
+            <span class="n">01</span><span class="st">Summarize this page</span><span class="go"><i class="fa-sharp fa-regular fa-file-lines" aria-hidden="true"></i></span>
           </button>
           <button class="sugg" data-prompt="Open the top 3 stories on Hacker News in new background tabs and tell me what each is about.">
-            <span class="si"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M3 8.5h14M6.5 5V3.5"/></svg></span>
-            <span>Open the top 3 Hacker News stories</span>
+            <span class="n">02</span><span class="st">Open the top 3 Hacker News stories</span><span class="go"><i class="fa-sharp fa-regular fa-newspaper" aria-hidden="true"></i></span>
           </button>
           <button class="sugg" data-prompt="Look at all my open tabs and group them by topic with short, clear names.">
-            <span class="si"><svg viewBox="0 0 20 20"><rect x="3" y="3.5" width="6" height="6" rx="1.5"/><rect x="11" y="3.5" width="6" height="6" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/></svg></span>
-            <span>Group my tabs by topic</span>
+            <span class="n">03</span><span class="st">Group my tabs by topic</span><span class="go"><i class="fa-sharp fa-regular fa-object-group" aria-hidden="true"></i></span>
           </button>
           <button class="sugg" data-prompt="Find links on this page I haven't visited before and bookmark the most interesting one into a folder called TuffAgent.">
-            <span class="si"><svg viewBox="0 0 20 20"><path d="M6 3.5h8a1 1 0 0 1 1 1v12l-5-3.2-5 3.2v-12a1 1 0 0 1 1-1z"/></svg></span>
-            <span>Bookmark something interesting here</span>
+            <span class="n">04</span><span class="st">Bookmark something interesting here</span><span class="go"><i class="fa-sharp fa-regular fa-bookmark" aria-hidden="true"></i></span>
           </button>
         </div>
       </section>
@@ -73,23 +63,42 @@
 
     <footer class="dock">
       <button id="jump" class="jump" title="Jump to latest">
-        <svg viewBox="0 0 16 16"><path d="M8 3.5v9M4 8.5l4 4 4-4"/></svg>
+        <i class="fa-sharp fa-regular fa-arrow-down" aria-hidden="true"></i>
       </button>
       <div class="composer" id="composer">
-        <textarea id="input" rows="1" placeholder="Ask TuffAgent to do anything…" spellcheck="false"></textarea>
+        <div class="activity" id="activity">
+          <div class="act-in">
+            <span class="act-meter" id="actMeter" aria-hidden="true"></span>
+            <span class="act-icon" id="actIcon"></span>
+            <span class="act-label" id="actLabel"></span>
+            <span class="act-time" id="actTime"></span>
+          </div>
+        </div>
+        <svg class="tracer" aria-hidden="true"><rect class="t3" pathLength="100"/><rect class="t2" pathLength="100"/><rect class="t1" pathLength="100"/></svg>
+        <div class="bouncer" aria-hidden="true"><i></i><i></i></div>
+        <div class="input-row">
+          <span class="prompt" aria-hidden="true">›</span>
+          <textarea id="input" rows="1" placeholder="Tell it what to do" spellcheck="false"></textarea>
+        </div>
         <div class="composer-row">
           <div id="tabChip" class="tab-chip" title="Current tab">
+            <i class="tab-fallback fa-sharp fa-regular fa-globe" aria-hidden="true"></i>
             <img id="tabIcon" alt="">
             <span id="tabTitle">No tab</span>
           </div>
+          <button id="modelBtn" class="model-chip" title="Choose model">
+            <i class="fa-sharp fa-regular fa-microchip" aria-hidden="true"></i>
+            <span id="modelName" class="model-name">Model</span>
+            <i class="chev fa-sharp fa-regular fa-chevron-down" aria-hidden="true"></i>
+          </button>
           <button id="sendBtn" class="send" title="Send (⏎)" disabled>
-            <svg class="arrow" viewBox="0 0 20 20"><path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9"/></svg>
+            <i class="arrow fa-sharp fa-regular fa-arrow-up" aria-hidden="true"></i>
             <span class="sq"></span>
           </button>
         </div>
       </div>
       <div id="totals" class="totals" title="Whole chat: time the agent spent working (not time waiting on you), tokens and cost" hidden>
-        <span class="tt-time"><svg viewBox="0 0 16 16"><circle cx="8" cy="8.5" r="5"/><path d="M8 6v2.5l1.6 1M6.5 2.5h3"/></svg><b id="totTime">0s</b></span>
+        <span class="tt-time"><i class="fa-sharp fa-regular fa-stopwatch" aria-hidden="true"></i><b id="totTime">0s</b></span>
         <span><b id="totTok">0</b> tok</span>
         <span><b id="totCost">$0</b></span>
       </div>
@@ -97,17 +106,18 @@
 
     <section id="onboard" class="onboard" hidden>
       <div class="ob-card">
-        <div class="halo"><svg class="mark big"><use href="#i-mark"/></svg></div>
-        <h1>Welcome to TuffAgent</h1>
-        <p class="sub">Paste an OpenRouter API key to use any model — Claude, GPT, Gemini, Grok, Qwen and hundreds more. It stays on this device.</p>
+        <div class="eyebrow"><svg class="mark"><use href="#i-mark"/></svg><span>TuffAgent</span><i></i><span>Setup</span></div>
+        <h1>Connect a model.</h1>
+        <p class="sub">Paste an OpenRouter key to run Claude, GPT, Gemini, Grok, Qwen and hundreds more. It stays on this device.</p>
         <form id="obForm">
           <div class="field">
+            <i class="fa-sharp fa-regular fa-key" aria-hidden="true"></i>
             <input id="obKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
           </div>
-          <button class="btn primary" id="obGo" type="submit"><span>Connect</span><i class="spin"></i></button>
+          <button class="btn primary" id="obGo" type="submit"><span>Connect</span><i class="go fa-sharp fa-regular fa-arrow-right" aria-hidden="true"></i><i class="spin"></i></button>
           <p class="ob-err" id="obErr"></p>
         </form>
-        <a class="ob-link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key at openrouter.ai/keys ↗</a>
+        <a class="ob-link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key — openrouter.ai/keys ↗</a>
       </div>
     </section>
 
@@ -117,7 +127,7 @@
       <div class="grab"></div>
       <div class="sheet-head">
         <div class="search">
-          <svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="m13.2 13.2 3.3 3.3"/></svg>
+          <i class="fa-sharp fa-regular fa-magnifying-glass" aria-hidden="true"></i>
           <input id="pickQ" placeholder="Search 300+ models…" spellcheck="false" autocomplete="off">
         </div>
       </div>
@@ -129,7 +139,7 @@
       <div class="sheet-title bar">
         <span>History</span>
         <button class="btn ghost sm" id="exportAll" type="button">
-          <svg viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 12.8h10"/></svg>Export all
+          <i class="fa-sharp fa-regular fa-file-export" aria-hidden="true"></i>Export all
         </button>
       </div>
       <p class="hist-hint">Exports are JSON logs with every message, tool call, result, and timing — handy for debugging the agent.</p>
@@ -141,41 +151,47 @@
       <div class="sheet-title">Settings</div>
       <div class="set-body">
         <label class="set-row">
-          <div><b>Model</b><small id="setModel">—</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-microchip" aria-hidden="true"></i><div><b>Model</b><small id="setModel">—</small></div>
           <button class="btn ghost sm" id="setModelBtn" type="button">Change</button>
         </label>
         <label class="set-row">
-          <div><b>Reasoning</b><small>Higher effort thinks longer before acting</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-brain" aria-hidden="true"></i><div><b>Reasoning</b><small>Higher effort thinks longer before acting</small></div>
           <select id="setReasoning">
             <option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
           </select>
         </label>
         <label class="set-row">
-          <div><b>Fastest providers</b><small>Route to the lowest-latency host</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-wave-pulse" aria-hidden="true"></i><div><b>Loader</b><small>How the prompt bar shows the agent working</small></div>
+          <select id="setLoader">
+            <option value="line">Line</option><option value="text">Text</option>
+          </select>
+        </label>
+        <label class="set-row">
+          <i class="set-ic fa-sharp fa-regular fa-bolt" aria-hidden="true"></i><div><b>Fastest providers</b><small>Route to the lowest-latency host</small></div>
           <input type="checkbox" class="switch" id="setFast">
         </label>
         <label class="set-row">
-          <div><b>Page highlight</b><small>Glow and cursor on pages the agent controls</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-arrow-pointer" aria-hidden="true"></i><div><b>Page highlight</b><small>Glow and cursor on pages the agent controls</small></div>
           <input type="checkbox" class="switch" id="setOverlay">
         </label>
         <label class="set-row">
-          <div><b>Trusted input</b><small>Real mouse/keyboard events via DevTools protocol. Works on stubborn sites; Chrome shows a debugging bar.</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-shield-check" aria-hidden="true"></i><div><b>Trusted input</b><small>Real mouse/keyboard events via DevTools protocol. Works on stubborn sites; Chrome shows a debugging bar.</small></div>
           <input type="checkbox" class="switch" id="setTrusted">
         </label>
         <label class="set-row">
-          <div><b>No step limit</b><small>Let the agent keep going until it's done or you stop it</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-infinity" aria-hidden="true"></i><div><b>No step limit</b><small>Let the agent keep going until it's done or you stop it</small></div>
           <input type="checkbox" class="switch" id="setUnlimited">
         </label>
         <label class="set-row" id="stepsRow">
-          <div><b>Max steps</b><small>Model rounds per request</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-stairs" aria-hidden="true"></i><div><b>Max steps</b><small>Model rounds per request</small></div>
           <input type="number" id="setSteps" min="1" max="500" class="num">
         </label>
         <div class="set-col">
-          <b>Custom instructions</b>
+          <b><i class="set-ic fa-sharp fa-regular fa-scroll" aria-hidden="true"></i>Custom instructions</b>
           <textarea id="setInstr" rows="3" placeholder="e.g. Prefer DuckDuckGo. Reply in a casual tone."></textarea>
         </div>
         <div class="set-row">
-          <div><b>OpenRouter key</b><small id="setKey">—</small></div>
+          <i class="set-ic fa-sharp fa-regular fa-key" aria-hidden="true"></i><div><b>OpenRouter key</b><small id="setKey">—</small></div>
           <button class="btn ghost sm danger" id="setKeyBtn" type="button">Disconnect</button>
         </div>
         <p class="set-foot">Shortcut: ⌘⇧Y opens the panel · Esc stops the agent</p>

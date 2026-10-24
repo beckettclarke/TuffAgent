@@ -474,7 +474,7 @@ async function typeKeys(api, id, s, gap = 0) {
 }
 
 // "#15c", "1155cc", "blue", "rgb(…)" → "#1155cc".
-function toHex(c) {
+export function toHex(c) {
   const s = String(c).trim();
   const h = s.replace(/^#/, '');
   if (/^[0-9a-f]{6}$/i.test(h)) return '#' + h.toLowerCase();
@@ -572,6 +572,14 @@ async function run(name, a, api) {
     }
 
     case 'gdocs_select': {
+      if (a.cursor === 'doc_start' || a.cursor === 'doc_end') {
+        await closeMenus(api, id);
+        await focusDoc(api, id);
+        const start = a.cursor === 'doc_start';
+        await api.keys(id, start ? (MAC ? 'Meta+ArrowUp' : 'Control+Home') : (MAC ? 'Meta+ArrowDown' : 'Control+End'));
+        return { text: `Cursor at the ${start ? 'start' : 'end'} of the document.`, label: `Cursor at document ${start ? 'start' : 'end'}` };
+      }
+      if (!a.text) throw new Error('gdocs_select needs text (or cursor "doc_start" / "doc_end").');
       const m = await select(api, id, a.text, a.occurrence, a.cursor || 'select');
       const what = a.cursor === 'start' ? 'Cursor before' : a.cursor === 'end' ? 'Cursor after' : 'Selected';
       return { text: `${what} “${clip(a.text, 60)}” (${m}).`, label: `${what} “${clip(a.text, 30)}”` };
@@ -755,13 +763,18 @@ async function run(name, a, api) {
       await sleep(350);
       let text;
       try {
-        const p = await api.cs(id, 'menuFind', { label: a.pick || a.query, roles: ['menuitem', 'menuitemcheckbox', 'menuitemradio', 'option'] });
+        // Exact label first: a loose match once ran "Move to previous bookmark" for "Bookmark".
+        const p = await api.cs(id, 'menuFind', { label: a.pick || a.query, roles: ['menuitem', 'menuitemcheckbox', 'menuitemradio', 'option'], strict: true });
         await clickFound(api, id, p);
         text = `Ran ${p.desc}`;
       } catch (e) {
-        if (a.pick) throw e;
+        // Nothing listed at all (results not rendered as menu items): Enter runs the top one.
+        if (a.pick || !/^No visible menu item/.test(e.message) || / Open menu has:/.test(e.message)) {
+          await api.keys(id, 'Escape');
+          throw new Error(`${e.message}${a.pick ? '' : ' Give pick = the exact result label.'}`);
+        }
         await api.keys(id, 'Enter');
-        text = `Ran the top menu-search result for "${a.query}"`;
+        text = `Ran the top menu-search result for "${a.query}" (no result was listed to check it against)`;
       }
       text += (await api.cs(id, 'settle', 80, 700)) || '';
       lastEdit = Date.now();
@@ -776,6 +789,7 @@ export default {
   title: 'Google Docs',
   match: (url) => DOC_RE.test(url),
   prompt: `Google Docs tools (gdocs_*) are on. Docs draws text on a canvas: never type it key by key, format it by clicking through menus and toolbars, or read it from screenshots.
+- Order of operations: (1) the whole body in one gdocs_write; (2) all gdocs_format fix-ups in one response; (3) rename, comments, mode, header/footer, page numbers, table of contents and other inserts; (4) one gdocs_read, fix what it shows is off; (5) the summary. Don't interleave reading with writing.
 - Fastest path: write the whole body in ONE gdocs_write (HTML). Inline CSS carries over: font-family (any Google font), font-size in pt, color, background-color (highlight), <b> <i> <u> <s>, <a href>, <h1>–<h6>, <ul>/<ol>, <hr>, tables (colspan/rowspan, <td style="background-color:…">, <b> header cells), <img src width height alt>, and <!--pagebreak-->.
 - Fix-ups: gdocs_format on a text match. One call sets style, font, size, color, highlight, bold/italic/underline, list (numbered/bulleted/checklist), align and link together. Fonts not in the menu are added from More fonts for you. Title/Subtitle exist only as gdocs_format style; a style resets the paragraph's font, so give style and font in the same call.
 - Put independent fix-ups in ONE response (several gdocs_format calls); they run in order and each re-finds its text.
@@ -789,7 +803,34 @@ export default {
   Sharing: the Share button › "Restricted change general access" › "Anyone with the link", then the role › "Commenter", Done.
   Suggestions: gdocs_mode suggesting, gdocs_write (after/replace), gdocs_mode editing.
 - Shortcuts: page break ${M}+Enter, undo ${M}+z, find and replace ${M}+Shift+h (type into Find and Replace with, click "Replace all", Close).`,
-  icons: { gdocs_read: 'read', gdocs_write: 'type', gdocs_select: 'find', gdocs_format: 'type', gdocs_comment: 'type', gdocs_mode: 'sel', gdocs_command: 'click', gdocs_rename: 'type', gdocs_equation: 'type' },
+  // Read automatically before the run ends, so the final answer is checked against the document.
+  finalCheck: 'gdocs_read',
+  icon(name, a) {
+    switch (name) {
+      case 'gdocs_read': return 'file-magnifying-glass';
+      case 'gdocs_write': return a.replace ? 'pen-to-square' : 'pen-nib';
+      case 'gdocs_select': return a.cursor && a.cursor !== 'select' ? 'i-cursor' : 'highlighter-line';
+      case 'gdocs_format':
+        if (a.list) return { numbered: 'list-ol', bulleted: 'list-ul', checklist: 'list-check' }[a.list] || 'list';
+        if (a.style) return 'heading';
+        if (a.clear_formatting) return 'text-slash';
+        if (a.link) return 'link';
+        if (a.align) return `align-${a.align}`;
+        if (a.highlight) return 'highlighter';
+        if (a.color) return 'palette';
+        if (a.bold != null) return 'bold';
+        if (a.italic != null) return 'italic';
+        if (a.underline != null) return 'underline';
+        if (a.strikethrough != null) return 'strikethrough';
+        if (a.size) return 'text-size';
+        return 'font';
+      case 'gdocs_comment': return a.resolve ? 'comment-check' : a.reply ? 'reply' : 'comment';
+      case 'gdocs_rename': return 'tag';
+      case 'gdocs_equation': return 'square-root-variable';
+      case 'gdocs_mode': return { editing: 'pen', suggesting: 'comment-pen', viewing: 'eye' }[a.mode] || 'eye';
+      case 'gdocs_command': return 'terminal';
+    }
+  },
   tools: [
     fn('gdocs_read', 'Structured state of the open Google Doc (from its export): page size and margins, each paragraph with style (Title/Heading…), alignment and inline formatting, tables as rows with merged cells and colors, images (size, alt, wrap), links, bookmarks, page breaks, header/footer, comments, on-screen comment/suggestion cards, save status, mode.', {
       full: { type: 'boolean', description: 'Full paragraph text (default clipped)' },
@@ -799,9 +840,9 @@ export default {
       at: { type: 'string', enum: ['cursor', 'start', 'end'] }, after: { type: 'string' }, before: { type: 'string' }, replace: { type: 'string' }, occurrence,
       clipboard: { type: 'boolean', description: 'Paste through the real clipboard (if a normal paste did nothing)' },
     }),
-    fn('gdocs_select', 'Select a text match in the Doc (case-insensitive find), or put the cursor at its start/end. Later key/type/paste calls act there.', {
-      text: { type: 'string' }, occurrence, cursor: { type: 'string', enum: ['select', 'start', 'end'] },
-    }, ['text']),
+    fn('gdocs_select', 'Select a text match in the Doc (case-insensitive find), or put the cursor at its start/end; cursor "doc_start"/"doc_end" (no text) puts it at the start or end of the whole document. Later key/type/paste calls act there.', {
+      text: { type: 'string' }, occurrence, cursor: { type: 'string', enum: ['select', 'start', 'end', 'doc_start', 'doc_end'] },
+    }),
     fn('gdocs_format', 'Format a text match (or the current selection) in one call: paragraph style, list, bold/italic/underline (true/false: set, not toggled), strikethrough (toggles), font family (any Google font), size, text color, highlight, align, link URL, clear_formatting. Styles and lists act on whole paragraphs. Order applied: style, list, B/I/U, align, link, then font, size, color, highlight.', {
       text: { type: 'string' }, occurrence, style: { type: 'string', description: STYLE_HINT },
       list: { type: 'string', enum: ['numbered', 'bulleted', 'checklist'] },
@@ -821,7 +862,7 @@ export default {
     fn('gdocs_mode', 'Switch to editing, suggesting (edits become suggestions) or viewing mode.', {
       mode: { type: 'string', enum: ['editing', 'suggesting', 'viewing'] },
     }, ['mode']),
-    fn('gdocs_command', 'Run a Docs menu command by name through the menu search, e.g. "Page break", "Merge cells", "Equation", "Bookmark", "Page numbers", "Header", "Name current version", "Page setup". pick = exact result label if several match.', {
+    fn('gdocs_command', 'Run a Docs menu command by name through the menu search, e.g. "Page break", "Merge cells", "Equation", "Bookmark", "Page numbers", "Header", "Name current version", "Page setup". The result labeled exactly like query (or pick) runs; if none is, the error lists the results — then give pick = the exact label.', {
       query: { type: 'string' }, pick: { type: 'string' },
     }, ['query']),
   ],
@@ -830,7 +871,7 @@ export default {
     switch (name) {
       case 'gdocs_read': return 'Reading document';
       case 'gdocs_write': return a.replace ? `Replacing ${q(a.replace)}` : 'Writing to document';
-      case 'gdocs_select': return `Selecting ${q(a.text)}`;
+      case 'gdocs_select': return a.text ? `Selecting ${q(a.text)}` : `Cursor to document ${a.cursor === 'doc_end' ? 'end' : 'start'}`;
       case 'gdocs_format': return a.text ? `Formatting ${q(a.text)}` : 'Formatting selection';
       case 'gdocs_comment': return a.comment ? `Commenting on ${q(a.text)}` : a.resolve ? 'Resolving comment' : 'Replying to comment';
       case 'gdocs_rename': return `Renaming to ${q(a.title)}`;

@@ -58,6 +58,22 @@ window.runChecks = async () => {
     catch (e) { return has(e.message, 'Nothing visible is labeled'); }
   });
 
+  await check('target: several partial matches are refused', () => {
+    try { return { pass: false, detail: T.point({ target: 'Save' }).desc }; }
+    catch (e) { return has(e.message, 'Nothing is labeled exactly "Save"', 'Save draft'); }
+  });
+  await check('target: a risky partial match is not clicked', () => {
+    try { return { pass: false, detail: T.point({ target: 'Position' }).desc }; }
+    catch (e) { return has(e.message, 'Lock position and appearance', 'not clicked'); }
+  });
+  await check('target: a lone safe partial match says what it used', () => has(T.point({ target: 'Red T-shirt' }).desc, 'used partial match'));
+  await check('menu: strict label refuses a loose match', () => {
+    $('#strict').scrollIntoView({ block: 'center' });
+    try { return { pass: false, detail: T.menuFind({ label: 'Save', strict: true }).desc }; }
+    catch (e) { return has(e.message, 'No menu item is labeled exactly'); }
+  });
+  await check('snapshot: screen-reader mirror is skipped', () => (!snap.includes('Mirror only text')) || { pass: false, detail: 'mirror text listed' });
+
   await check('click: synthetic click on a handler-only card', async () => {
     await T.click({ target: 'Red T-shirt' });
     return $('#picked').textContent === 'Picked: red' || { pass: false, detail: $('#picked').textContent };
@@ -99,6 +115,18 @@ window.runChecks = async () => {
     const r = await T.type({ target: 'Email', text: 'a@b.co' });
     return $('#email').value === 'a@b.co' || { pass: false, detail: r };
   });
+  await check('type: replaces a value the page reformats on focus', async () => {
+    await T.type({ target: 'Height', text: '230' });
+    return $('#hpx').value.replace(/ px$/, '') === '230' || { pass: false, detail: $('#hpx').value };
+  });
+  await check('type: a field that ends up different is an error', async () => {
+    try { await T.type({ target: 'Eats digits', text: '72' }); return { pass: false, detail: 'no error; field shows ' + $('#eat').value }; }
+    catch (e) { return has(e.message, 'but the field shows "2"'); }
+  });
+  await check('click: an open list over the target is closed, not clicked through', async () => {
+    const r = await T.click({ target: 'Download file' });
+    return ($('#dlstate').textContent === 'Downloaded' && !$('#typelist')) ? has(r, 'closed an open list') : { pass: false, detail: r };
+  });
   await check('type: a named non-field is an error, not a stray type', async () => {
     try { await T.type({ target: 'Products', text: 'x' }); return { pass: false, detail: 'typed somewhere' }; }
     catch (e) { return has(e.message, 'is not a text field'); }
@@ -126,9 +154,15 @@ window.runChecks = async () => {
     return order === 'Beta,Gamma,Alpha' ? has(r, 'moved') : { pass: false, detail: order + '\n' + r };
   });
   await check('drag: HTML5 drag-and-drop', async () => {
+    $('#native').scrollIntoView({ block: 'center' });
     const r = await T.drag({ target: 'One', to_target: 'Three' });
     const order = [...document.querySelectorAll('#native li')].map((l) => l.textContent).join(',');
     return order === 'Two,Three,One' ? has(r, 'dropped') : { pass: false, detail: order + '\n' + r };
+  });
+
+  await check('drag: a drag that moves nothing is an error', async () => {
+    try { return { pass: false, detail: await T.drag({ target: 'Static block', dx: 60, dy: 0 }) }; }
+    catch (e) { return has(e.message, 'nothing moved'); }
   });
 
   await check('shadow DOM: click by label', async () => {

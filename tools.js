@@ -2,7 +2,7 @@
 // APIs directly, so each action is a single round trip.
 import './keys.js';
 import { mdToHtml, htmlToText } from './docmd.js';
-import { PACKS, packOf } from './sites/index.js';
+import { PACKS, packOf, packsForUrl } from './sites/index.js';
 
 export const agent = {
   tabId: null,
@@ -485,7 +485,7 @@ const normRef = (v) => {
   const s = String(v).trim().replace(/^\[|\]$/g, '').replace(/^ref\s*[:=]\s*/i, '');
   return /^\d+$/.test(s) ? 'e' + s : s;
 };
-function normalize(name, a) {
+export function normalize(name, a) {
   a = a && typeof a === 'object' ? { ...a } : {};
   if (name === 'go_back') a.url = 'back';
   if (name === 'scroll_down' || name === 'scroll_up') a.direction ??= name.slice(7);
@@ -574,6 +574,21 @@ async function afterAction(tabId, t0, text) {
   return `${text}\nPage navigated → ${tab?.title || ''} — ${tab?.url || ''}` + (await quickSnapshot(tabId));
 }
 
+// Canvas apps say what a click selected (a shape, the page background), so the
+// model never fills or moves the wrong element.
+async function selectionNote(tabId) {
+  const t = await chrome.tabs.get(tabId).catch(() => null);
+  const p = packsForUrl(t?.url).find((x) => x.selection);
+  if (!p) return '';
+  try { const s = await p.selection(API, tabId); return s ? `\n${s}` : ''; } catch { return ''; }
+}
+
+// ── Downloads ──
+const bytes = (n) => (!(n > 0) ? '? bytes' : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
+const fmtDownload = (d) => `[${d.id}] ${String(d.filename || '').split(/[\\/]/).pop() || '(no file yet)'} — ${d.mime || 'unknown type'}, ${bytes(d.fileSize || d.totalBytes || d.bytesReceived)}, ${d.state}` +
+  `${d.error ? ` (${d.error})` : ''}, started ${ago(Date.parse(d.startTime))}, from ${hostOf(d.finalUrl || d.url)}`;
+const downloadsSince = (ms) => chrome.downloads.search({ startedAfter: new Date(ms).toISOString(), orderBy: ['-startTime'], limit: 20 });
+
 function blobToDataURL(blob) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
 }
@@ -586,6 +601,7 @@ function fmtTab(t, cur) {
 
 const ago = (ms) => {
   const s = (Date.now() - ms) / 1000;
+  if (s < 60) return Math.max(0, Math.round(s)) + 's ago';
   if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
   if (s < 86400) return Math.round(s / 3600) + 'h ago';
   return Math.round(s / 86400) + 'd ago';
@@ -682,6 +698,9 @@ export const TOOLS = [
     parent_id: { type: 'string', description: 'Folder id for create, or subtree root for tree' },
     id: { type: 'string', description: 'For remove' },
   }, ['action']),
+  fn('downloads', 'Recent downloads, newest first: file name, type, size, state and when. Use it to confirm a download happened, and how many times.', {
+    limit: { type: 'integer', description: 'How many (default 10)' },
+  }),
   fn('history_search', 'Search browsing history.', {
     query: { type: 'string', description: 'Empty for recent' }, days: { type: 'integer', description: 'Look back (default 30)' },
     max_results: { type: 'integer' },
@@ -728,6 +747,7 @@ export function preLabel(name, a = {}) {
     case 'run_js': return 'Running JavaScript';
     case 'bookmarks': return { search: `Searching bookmarks ${q(a.query)}`, recent: 'Recent bookmarks', tree: 'Reading bookmarks', create: `Bookmarking ${q(a.title)}`, remove: 'Removing bookmark' }[a.action] || 'Bookmarks';
     case 'history_search': return a.query ? `Searching history ${q(a.query)}` : 'Recent history';
+    case 'downloads': return 'Checking downloads';
     case 'wait': return a.text || a.selector ? `Waiting for ${q(a.text || a.selector)}` : `Waiting ${a.ms || 500}ms`;
     case 'paste': return 'Pasting';
     case 'menu': return `Menu ${q((a.path || []).join(' › '))}`;
@@ -746,6 +766,7 @@ export async function exec(name, a = {}) {
   return r;
 }
 
+let opens = 0;
 async function run(name, a) {
   const t0 = performance.now();
   switch (name) {
@@ -763,12 +784,14 @@ async function run(name, a) {
 
     case 'tab_open': {
       const url = toUrl(a.url);
-      const active = a.active !== false;
-      const tab = await chrome.tabs.create({ url, active, windowId: agent.windowId ?? undefined });
+      // Opens can run at the same time; the one started last becomes current.
+      const seq = ++opens;
+      const tab = await chrome.tabs.create({ url, active: a.active !== false, windowId: agent.windowId ?? undefined });
       const wait = loaded(tab.id);
       const fresh = await chrome.tabs.get(tab.id);
       if (fresh.status === 'complete') wait.cancel();
       await wait;
+      const active = a.active !== false && seq === opens;
       if (active) agent.tabId = tab.id;
       const t = await chrome.tabs.get(tab.id);
       return {
@@ -850,8 +873,17 @@ async function run(name, a) {
       let text;
       if (agent.trusted) {
         await ready(id);
-        const p = await cs(id, 'point', a);
+        let p = await cs(id, 'point', a);
         if (!p) throw new Error('Page is navigating; try again.');
+        if (p.popup) {
+          // An open list or menu sits on the target: close it rather than click through it.
+          await cdpKeys(id, 'Escape');
+          await cs(id, 'quiet', 60, 400);
+          p = await cs(id, 'point', a);
+          if (!p) throw new Error('Page is navigating; try again.');
+          if (p.popup) throw new Error(`${p.desc}: an open list or menu (${p.popup}) covers it and Escape did not close it. Pick an option in it or close it first.`);
+          p.desc += ' (closed an open list that covered it)';
+        }
         if (p.covered) {
           // Every spot of the element is under something else (a banner, an overlay):
           // a real click would land on that, so send the click to the element itself.
@@ -863,7 +895,8 @@ async function run(name, a) {
       } else {
         text = (await cs(id, 'click', a)) ?? 'Clicked (page navigated)';
       }
-      return { text: await afterAction(id, t0, text), label: firstLine(text).replace(/ \((warning|\d+ matches).*$/, '') };
+      text = await afterAction(id, t0, text);
+      return { text: text + await selectionNote(id), label: firstLine(text).replace(/ \((warning|\d+ matches|no exact match|closed an open).*$/, '') };
     }
 
     case 'drag': {
@@ -876,9 +909,10 @@ async function run(name, a) {
         const how = await cdpDrag(id, p, mouseMods(a.modifiers), a.hold);
         const note = how === 'dropped' ? ' (drag-and-drop: dropped)' : how === 'refused' ? ' (drag-and-drop: target did not accept the drop)' : '';
         const diff = await settleAfter(id, t0, 100, 900);
-        text = `Dragged ${p.desc}${note}${(await cs(id, 'dragCheck')) || ''}` + diff;
+        text = `Dragged ${p.desc}${note}${(await cs(id, 'dragDone', p.desc, diff)) || ''}` + diff;
       } else text = (await cs(id, 'drag', a)) ?? 'Dragged (page navigated)';
-      return { text: await afterAction(id, t0, text), label: firstLine(text) };
+      text = await afterAction(id, t0, text);
+      return { text: text + await selectionNote(id), label: firstLine(text) };
     }
 
     case 'type': {
@@ -893,6 +927,9 @@ async function run(name, a) {
         let check = '';
         if (f.kind === 'value') text = await cs(id, 'setValue', { value: s });
         else {
+          // The page's focus handlers may have reformatted the value and dropped the
+          // selection: select it all again with the keyboard right before typing.
+          if (f.plain && f.replace) { await cs(id, 'reselect'); await cdpKeys(id, MAC ? 'Meta+a' : 'Control+a'); }
           if (f.plain && s && s.length <= 80 && !s.includes('\n')) {
             // Short text in a plain field goes in key by key, so autocompletes and
             // masks that listen for key events react as they would to a person.
@@ -907,7 +944,19 @@ async function run(name, a) {
             }
           }
           if (!s && f.cleared) await cdpKeys(id, 'Backspace');
-          if (f.plain && !a.submit) check = (await cs(id, 'fieldCheck', s)) || '';
+          // Read the value back before Enter (which may submit and clear it).
+          if (f.plain) {
+            let st = await cs(id, 'fieldState', s, f.replace);
+            if (st && !st.ok && f.replace) {
+              // Comboboxes and masked fields can re-select or reformat under key-by-key
+              // typing: select all and put the whole value in at once, then check again.
+              await cdpKeys(id, MAC ? 'Meta+a' : 'Control+a');
+              await cdp(id, 'Input.insertText', { text: s });
+              st = await cs(id, 'fieldState', s, true);
+              if (st?.ok) check = ' (typed again in one piece: the first try left something else)';
+            }
+            if (st && !st.ok) throw new Error(`Typed "${clip(s, 60)}" into ${f.desc}, but the field shows "${st.shown}". The page changed or rejected the input. Read the field, then type the whole value again (or use the app's own control for it).`);
+          }
           if (a.submit) await cdpKeys(id, 'Enter');
           text = `Typed "${clip(s, 60)}" into ${f.desc}${a.submit ? ' and pressed Enter' : ''}${check}`;
         }
@@ -1073,6 +1122,11 @@ async function run(name, a) {
       return { text: text || 'No history matches.', label: `Found ${res.length} history item${res.length === 1 ? '' : 's'}` };
     }
 
+    case 'downloads': {
+      const list = await chrome.downloads.search({ orderBy: ['-startTime'], limit: Math.max(1, Math.min(+a.limit || 10, 50)) });
+      return { text: list.map(fmtDownload).join('\n') || 'No downloads.', label: `Found ${list.length} download${list.length === 1 ? '' : 's'}` };
+    }
+
     case 'paste': {
       const id = await resolveTab(a);
       const text = await pasteContent(id, a);
@@ -1085,15 +1139,18 @@ async function run(name, a) {
       const path = (Array.isArray(a.path) ? a.path : String(a.path || '').split(/\s*[>›]\s*/)).map(String).filter(Boolean);
       if (!path.length) throw new Error('menu needs a path');
       let diff = '';
+      const notes = [];
       for (let i = 0; i < path.length; i++) {
         let p;
-        try { p = await cs(id, 'menuFind', { label: path[i] }); }
+        try { p = await cs(id, 'menuFind', { label: path[i], strict: true }); }
         catch (e) {
           // Don't leave half-opened menus behind: they swallow the next keys and clicks.
           if (i) await (agent.trusted ? cdpKeys(id, `Escape*${i}`) : cs(id, 'key', { keys: `Escape*${i}` })).catch(() => {});
           throw new Error(`${e.message}${i ? ` (closed the menu after “${path.slice(0, i).join(' › ')}”)` : ''}`);
         }
         if (!p) throw new Error('Page is navigating; try again.');
+        const used = p.desc.match(/ \(no exact match for .*\)$/);
+        if (used) notes.push(used[0]);
         if (agent.trusted) {
           await mouseEv(id, 'mouseMoved', p.x, p.y, {});
           await cdpClick(id, p.x, p.y);
@@ -1101,7 +1158,7 @@ async function run(name, a) {
         // Submenus open on hover/click; wait until the DOM settles before the next label.
         diff = i === path.length - 1 ? await settleAfter(id, t0, 60, 700) : (await cs(id, 'settle', 60, 450)) || '';
       }
-      const text = `Clicked ${path.join(' › ')}` + diff;
+      const text = `Clicked ${path.join(' › ')}${notes.length ? notes.join('') : ''}` + diff;
       return { text: await afterAction(id, t0, text), label: `Clicked ${clip(path.join(' › '), 70)}` };
     }
 
@@ -1129,7 +1186,8 @@ async function run(name, a) {
 
 // What site packs get to work with.
 const API = {
-  agent, MAC, sleep, clip, resolveTab, cs, cdp, page, afterAction, exec,
+  agent, MAC, sleep, clip, resolveTab, cs, cdp, page, afterAction, exec, downloadsSince, fmtDownload,
+  sameValue: (shown, typed, replace) => globalThis.TuffKeys.sameValue(shown, typed, replace),
   keys: cdpKeys, click: cdpClick, mouseEv, paste: pasteContent, mdToHtml, htmlToText,
   insertText: (tabId, text) => cdp(tabId, 'Input.insertText', { text }),
 };
