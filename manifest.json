@@ -3,7 +3,14 @@
   "name": "TuffAgent",
   "version": "1.5.0",
   "description": "A fast browser agent in your sidebar. Bring any model through OpenRouter.",
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "121",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tuffagent@beckettclarke.ca",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": { "required": ["websiteContent", "browsingActivity"] }
+    }
+  },
   "permissions": [
     "sidePanel",
     "tabs",
@@ -14,12 +21,20 @@
     "storage",
     "unlimitedStorage",
     "webNavigation",
+    "webRequest",
     "debugger",
     "downloads"
   ],
+  "optional_permissions": ["clipboardRead", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
+  "background": { "service_worker": "background.js", "scripts": ["background.js"] },
   "side_panel": { "default_path": "sidepanel.html" },
+  "sidebar_action": {
+    "default_panel": "sidepanel.html",
+    "default_title": "TuffAgent",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" },
+    "open_at_install": false
+  },
   "action": {
     "default_title": "Open TuffAgent",
     "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }

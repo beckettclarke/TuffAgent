@@ -3,10 +3,12 @@
 // tool list. A pack is { id, title, match(url), prompt, tools, icon(name, args), preLabel(name, args), exec(name, args, api) },
 // plus optional finalCheck (a read tool run once before the agent's final answer)
 // and selection(api, tabId) (what a click on the page selected, for canvas apps).
+import { CAN_DEBUG } from '../compat.js';
 import gdocs from './gdocs.js';
 import canva from './canva.js';
 
-export const PACKS = [gdocs, canva];
+// Both packs drive their apps through the DevTools protocol, so Firefox gets none.
+export const PACKS = CAN_DEBUG ? [gdocs, canva] : [];
 
 const byTool = new Map(PACKS.flatMap((p) => p.tools.map((t) => [t.function.name, p])));
 export const packOf = (toolName) => byTool.get(toolName);

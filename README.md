@@ -8,12 +8,12 @@
 
 <br>
 
-**A fast browser agent that lives in Chrome's side panel.**<br>
+**A fast browser agent that lives in your browser's sidebar, in Chrome or Firefox.**<br>
 It reads pages, clicks, types, drags and works your tabs, with any tool-calling model on OpenRouter.
 
 <br>
 
-![Version](https://img.shields.io/badge/version-1.5.0-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Chrome](https://img.shields.io/badge/Chrome-116%2B-0a0a0a?style=flat-square&logo=googlechrome&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Manifest](https://img.shields.io/badge/Manifest-V3-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Models](https://img.shields.io/badge/models-OpenRouter-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Build](https://img.shields.io/badge/build-none-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a)
+![Version](https://img.shields.io/badge/version-1.5.0-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Chrome](https://img.shields.io/badge/Chrome-121%2B-0a0a0a?style=flat-square&logo=googlechrome&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Firefox](https://img.shields.io/badge/Firefox-128%2B-0a0a0a?style=flat-square&logo=firefoxbrowser&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Manifest](https://img.shields.io/badge/Manifest-V3-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Models](https://img.shields.io/badge/models-OpenRouter-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Build](https://img.shields.io/badge/build-none-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a)
 
 [Install](#install) · [Features](#features) · [Site packs](#site-packs) · [How it works](#how-it-works) · [Settings](#settings) · [Development](#development)
 
@@ -63,16 +63,28 @@ It reads pages, clicks, types, drags and works your tabs, with any tool-calling 
 ## Install
 
 > [!NOTE]
-> TuffAgent isn't on the Chrome Web Store. You load it unpacked, and there's nothing to build.
+> TuffAgent isn't on the Chrome Web Store or addons.mozilla.org. You load it unpacked, and there's nothing to build.
 
 ```bash
 git clone https://github.com/beckettclarke/TuffAgent.git
 ```
 
+**Chrome** (121 or later)
+
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `TuffAgent` folder.
 3. Click the toolbar icon, or press <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd> (<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux).
 4. Paste an [OpenRouter key](https://openrouter.ai/keys). It's stored only in this browser.
+
+**Firefox** (128 or later)
+
+1. Open `about:debugging#/runtime/this-firefox` and click **Load Temporary Add-on…**.
+2. Choose `manifest.json` in the `TuffAgent` folder. A temporary add-on is removed when Firefox quits; to keep it, run `npx web-ext build` and install the zip in Firefox Developer Edition or Nightly with `xpinstall.signatures.required` off.
+3. Click the toolbar icon, or press the shortcut, to toggle the sidebar. If Firefox asks, allow access to all websites; without it the agent can't read or click pages.
+4. Paste an [OpenRouter key](https://openrouter.ai/keys).
+
+> [!IMPORTANT]
+> Firefox gives extensions no DevTools protocol, so TuffAgent does those jobs another way there: page dialogs are answered from inside the page, actions wait on the network through `webRequest`, and the clipboard paste goes through the page's own paste command (Firefox asks for clipboard access once, with your first message). Three things can't be rebuilt without it and stay Chrome-only: **Trusted input** (Firefox always uses in-page events, which a few stubborn sites ignore), the **Google Docs and Canva packs**, and `run_js` on pages whose CSP blocks eval. Tab grouping needs Firefox 138 or later. If the shortcut clashes with one of Firefox's own, change it under `about:addons` › ⚙ › **Manage Extension Shortcuts**.
 
 <table>
   <tr>
@@ -105,13 +117,13 @@ git clone https://github.com/beckettclarke/TuffAgent.git
 | **Reading** | page snapshots with element refs, `get_text` with a query filter, `find` |
 | **Acting** | click, drag, type, keys, paste (text, markdown or HTML), menu paths, scroll, hover, native selects |
 | **Vision** | screenshots with every clickable tagged by ref and edge rulers added, for vision models |
-| **Scripting** | JavaScript in the page or any iframe, run through the DevTools protocol so strict CSP pages work |
+| **Scripting** | JavaScript in the page or any iframe, run through the DevTools protocol so strict CSP pages work (Chrome) |
 | **Browser data** | bookmarks (search, tree, create, remove), history search, downloads |
 | **Planning** | a requirements checklist for long tasks |
 
 ## Site packs
 
-Some sites get extra tools. A pack's tools and prompt notes are sent to the model only once a matching page is open in the chat, so every other site keeps the lean core tool list. Once on, a pack stays on for the rest of that chat, so the tool list (and the provider's prompt cache) doesn't change mid-task. Packs live in [`sites/`](sites); register a new one in [`sites/index.js`](sites/index.js).
+Some sites get extra tools (Chrome only: both packs drive their apps through the DevTools protocol). A pack's tools and prompt notes are sent to the model only once a matching page is open in the chat, so every other site keeps the lean core tool list. Once on, a pack stays on for the rest of that chat, so the tool list (and the provider's prompt cache) doesn't change mid-task. Packs live in [`sites/`](sites); register a new one in [`sites/index.js`](sites/index.js).
 
 <details>
 <summary><b>Google Docs</b> &nbsp;<code>docs.google.com/document/…</code></summary>
@@ -248,13 +260,23 @@ The clock button opens your chat history. Click a chat to reopen it, use the dow
 | Loader | Line | A soft line on the composer's edge, or an ASCII meter. |
 | Fastest providers | On | Routes to the lowest-latency host. |
 | Page highlight | On | Glow and cursor on pages the agent controls. |
-| Trusted input | On | Real mouse and keyboard events through the DevTools protocol. Chrome shows a debugging bar while the agent acts. |
+| Trusted input | On | Real mouse and keyboard events through the DevTools protocol. Chrome shows a debugging bar while the agent acts. Hidden in Firefox, which doesn't have it. |
 | Step limit | 100 | Model rounds per request. Can be turned off. |
 | Custom instructions | — | Added to the system prompt. |
 
 ## Development
 
-There's no build step: the source is what Chrome loads. After a change, click the reload icon on the TuffAgent card in `chrome://extensions` and reopen the panel.
+There's no build step: the source is what the browser loads. After a change, click the reload icon on the TuffAgent card in `chrome://extensions` (or **Reload** in `about:debugging` in Firefox) and reopen the panel.
+
+To run it in a fresh Firefox profile, or check it against Firefox's add-on rules:
+
+```bash
+npx web-ext run
+```
+
+```bash
+npx web-ext lint --ignore-files 'test/**' '.github/**'
+```
 
 ### Tests
 
@@ -279,8 +301,9 @@ python3 -m http.server
 
 | File | Role |
 | --- | --- |
-| [`manifest.json`](manifest.json) | MV3 manifest: permissions, side panel, shortcut |
-| [`background.js`](background.js) | Service worker; only wires the toolbar button to the panel |
+| [`manifest.json`](manifest.json) | MV3 manifest: permissions, side panel (Chrome) and sidebar (Firefox), shortcut |
+| [`background.js`](background.js) | Background script; only wires the toolbar button to the panel |
+| [`compat.js`](compat.js) | Firefox shims: promise-based `chrome`, and whether the DevTools protocol is there |
 | [`sidepanel.html`](sidepanel.html) · [`sidepanel.css`](sidepanel.css) · [`sidepanel.js`](sidepanel.js) | The panel UI and the agent loop |
 | [`llm.js`](llm.js) | Streaming OpenRouter client with retries |
 | [`tools.js`](tools.js) | Tool definitions, labels and execution |
@@ -293,7 +316,7 @@ python3 -m http.server
 
 ## Privacy
 
-- Your OpenRouter key is kept in `chrome.storage.local` on this device and sent only to OpenRouter.
+- Your OpenRouter key is kept in the extension's local storage on this device and sent only to OpenRouter.
 - Page content goes to the model you choose, through OpenRouter, only while the agent is working on a task.
 - Chats and logs stay in the browser unless you export them.
 

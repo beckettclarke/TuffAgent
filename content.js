@@ -802,7 +802,40 @@
     return list('New on screen', fresh, 50) + list('Changed', changed, 15) + text +
       (gone ? `\n(${gone} element${gone === 1 ? '' : 's'} left the screen)` : '');
   }
-  async function finish(quiet, cap) { await settle(quiet, cap); return changes(); }
+  async function finish(quiet, cap) {
+    await settle(quiet, cap);
+    // Firefox: the panel watches the network with webRequest. Let it wait for the
+    // requests this action started, then let the DOM settle on what they returned.
+    if (netHold && await chrome.runtime.sendMessage({ tuffNet: 1 }).catch(() => false)) await settle(60, cap);
+    return changes();
+  }
+
+  // ── Firefox stand-ins for what Chrome does through the DevTools protocol ──
+  // While the agent works a tab, alert/confirm/prompt are answered at once (they
+  // would freeze the page, and our scripts with it) and reported to the panel.
+  // unguard() puts the page's own functions back when the run ends.
+  let netHold = false;
+  let dialogs = null;
+  function guard() {
+    netHold = true;
+    if (dialogs || typeof exportFunction !== 'function') return;
+    const w = window.wrappedJSObject;
+    dialogs = { alert: w.alert, confirm: w.confirm, prompt: w.prompt };
+    const say = (type, m) => { chrome.runtime.sendMessage({ tuffDialog: { type, message: String(m ?? '') } }).catch(() => {}); };
+    w.alert = exportFunction((m) => { say('alert', m); }, window);
+    w.confirm = exportFunction((m) => { say('confirm', m); return true; }, window);
+    w.prompt = exportFunction((m, d) => { say('prompt', m); return d == null ? '' : String(d); }, window);
+  }
+  function unguard() {
+    netHold = false;
+    if (dialogs) Object.assign(window.wrappedJSObject, dialogs);
+    dialogs = null;
+  }
+  // A real paste from the clipboard into the focused field (Firefox, with clipboardRead).
+  function execPaste() {
+    const a = deepActive();
+    return (a?.ownerDocument || document).execCommand('paste');
+  }
 
   // ── Aiming ──
 
@@ -1651,7 +1684,7 @@
   window.__tuff = {
     snapshot, find, click, point, type, key, keyPrep, scroll, hover, selectOption, drag, dragPoints, dragCheck, paste, menuFind,
     prepField: (t) => { const info = prepField(t); delete info.el; return info; },
-    setValue, fieldState, reselect,
+    setValue, fieldState, reselect, guard, unguard, execPaste,
     dragDone: (desc, diff) => { const c = dragCheck(); const f = dragFailed(desc, c, diff); if (f) throw f; return c.text; },
     text, waitFor, viewport, begin, changes,
     settle: (q, c) => finish(q, c),

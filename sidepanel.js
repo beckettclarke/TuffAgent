@@ -1,3 +1,4 @@
+import { CAN_DEBUG, FIREFOX } from './compat.js';
 import { agent, exec, normalize, preLabel, toolsFor, overlayOff, detachAll, currentTabInfo, restoreChecklist, openChecklist, parseArgs, TOOLS } from './tools.js';
 import { PACKS, packOf, packsForUrl } from './sites/index.js';
 import { complete, checkKey, listModels } from './llm.js';
@@ -341,7 +342,7 @@ const activePacks = () => PACKS.filter((p) => chatPacks.has(p.id));
 
 function systemPrompt() {
   // Date only: the system prompt opens every request, so it must stay byte-stable for prompt caching.
-  return `You are TuffAgent, a fast browser agent living in the user's Chrome side panel. You control the browser through tools.
+  return `You are TuffAgent, a fast browser agent living in the user's ${FIREFOX ? 'Firefox sidebar' : 'Chrome side panel'}. You control the browser through tools.
 Date: ${new Date().toDateString()}. Platform: ${MAC ? 'macOS — shortcuts use Meta (⌘), e.g. Meta+a, Meta+z, Meta+Shift+h' : 'Windows/Linux — shortcuts use Control'}.
 
 How to work:
@@ -457,10 +458,38 @@ async function contextLine() {
   return `\n\n<context>Time: ${time}. Current tab [${t.id}]: ${t.title || ''} — ${t.url || ''}\n${count} tab${count === 1 ? '' : 's'} open in this window.</context>`;
 }
 
+// Firefox lets people switch off (or never grant) "all websites" access, which
+// leaves the agent unable to read or click anything. Ask while we still hold the
+// click or keypress that sent the message: Firefox only shows the prompt then.
+// Firefox's clipboard fallback for paste (tools.js) is asked for once, alongside.
+const ALL_SITES = ['<all_urls>'];
+const CLIPBOARD = ['clipboardRead', 'clipboardWrite'];
+let hostOk = true;
+let clipOk = true;
+function checkHost() {
+  chrome.permissions.contains({ origins: ALL_SITES }).then((ok) => { hostOk = ok; }, () => {});
+  chrome.permissions.contains({ permissions: CLIPBOARD }).then((ok) => { clipOk = ok; }, () => {});
+}
+if (FIREFOX) {
+  chrome.permissions.onAdded.addListener(checkHost);
+  chrome.permissions.onRemoved.addListener(checkHost);
+  checkHost();
+}
+function askHostAccess() {
+  if (!FIREFOX) return;
+  const want = {};
+  if (!hostOk) want.origins = ALL_SITES;
+  if (!clipOk && !S.clipAsked) want.permissions = CLIPBOARD;
+  if (!want.origins && !want.permissions) return;
+  chrome.permissions.request(want).then(checkHost, () => {});
+  if (want.permissions) { S.clipAsked = true; save(); }
+}
+
 // ── Agent loop ──
 async function send(text) {
   text = text.trim();
   if (!text || running) return;
+  askHostAccess();
   userBubble(text);
   follow(true);
   field.at(sendBtn, 'send');
@@ -479,7 +508,7 @@ async function run() {
   const turn = new Turn();
   ctrl = new AbortController();
   const signal = ctrl.signal;
-  agent.trusted = S.trusted;
+  agent.trusted = S.trusted && CAN_DEBUG;
   agent.overlay = S.overlay;
   const t0 = performance.now();
   liveTotals(true);
@@ -1049,6 +1078,7 @@ function openSettings() {
   $('#setFast').checked = S.fast;
   $('#setOverlay').checked = S.overlay;
   $('#setTrusted').checked = S.trusted;
+  $('#setTrusted').closest('.set-row').style.display = CAN_DEBUG ? '' : 'none';
   $('#setSteps').value = S.maxSteps;
   $('#setUnlimited').checked = S.unlimited;
   $('#stepsRow').classList.toggle('off', S.unlimited);

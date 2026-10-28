@@ -1,5 +1,6 @@
 // Browser tools. Everything here runs in the side panel and talks to Chrome
 // APIs directly, so each action is a single round trip.
+import { CAN_DEBUG, FIREFOX } from './compat.js';
 import './keys.js';
 import { mdToHtml, htmlToText } from './docmd.js';
 import { PACKS, packOf, packsForUrl } from './sites/index.js';
@@ -88,6 +89,8 @@ function friendly(e) {
   const m = String(e?.message || e);
   if (/Cannot access|cannot be scripted|chrome:\/\/|extensions gallery|Cannot script|webstore/i.test(m))
     return new Error('This page is restricted (chrome://, Web Store, PDF viewer, etc.) — it cannot be read or clicked. Navigate to a normal web page.');
+  if (FIREFOX && /Missing host permission/i.test(m))
+    return new Error('TuffAgent is not allowed on this site. In Firefox, open about:addons › TuffAgent › Permissions and turn on "Access your data for all websites".');
   if (/No tab with id/i.test(m)) return new Error('That tab no longer exists. Call tabs_list.');
   if (/Frame with ID 0 was removed|frame was removed|navigated/i.test(m)) return null;
   return new Error(m);
@@ -107,15 +110,17 @@ async function cs(tabId, method, ...args) {
   const ov = agent.overlay ? 'TuffAgent is working' : null;
   // Calls that wait on purpose get their own wait on top.
   const ms = CS_TIMEOUT + (method === 'waitFor' ? Math.min(+args[0]?.timeout || 5000, 20000) : 0);
+  const fx = !CAN_DEBUG;
+  if (fx) watchTab(tabId);
   const call = () => within(chrome.scripting.executeScript({
     target,
-    func: async (m, a, ov) => {
+    func: async (m, a, ov, fx) => {
       const t = window.__tuff;
       if (!t) return { missing: 1 };
-      try { if (ov) t.overlay(true, ov); return { v: await t[m](...a) }; }
+      try { if (ov) t.overlay(true, ov); if (fx) t.guard(); return { v: await t[m](...a) }; }
       catch (e) { return { err: String(e?.message || e) }; }
     },
-    args: [method, args, ov],
+    args: [method, args, ov, fx],
   }), ms);
   const attempt = async () => {
     try { return (await call())[0]?.result; }
@@ -142,14 +147,14 @@ async function cs(tabId, method, ...args) {
 const dbg = new Set();
 // XHR/fetch requests in flight per attached tab: requestId → { at, key }.
 const inflight = new Map();
-chrome.debugger.onDetach.addListener((s) => { dbg.delete(s.tabId); inflight.delete(s.tabId); });
+chrome.debugger?.onDetach.addListener((s) => { dbg.delete(s.tabId); inflight.delete(s.tabId); });
 
 // Things the page did on its own (dialogs it showed), reported with the next tool result.
 const notes = [];
 const note = (s) => { if (notes.length < 10) notes.push(s); };
 const takeNotes = () => (notes.length ? '\n\n' + notes.splice(0).join('\n') : '');
 
-chrome.debugger.onEvent.addListener((src, method, p) => {
+chrome.debugger?.onEvent.addListener((src, method, p) => {
   const tabId = src.tabId;
   if (method === 'Page.javascriptDialogOpening') {
     // An open alert/confirm freezes every script on the page, ours included. Accept
@@ -166,6 +171,7 @@ chrome.debugger.onEvent.addListener((src, method, p) => {
 });
 
 async function attach(tabId) {
+  if (!CAN_DEBUG) throw new Error('This needs the DevTools protocol, which only Chrome has. Try the plain click/type/key tools instead.');
   await chrome.debugger.attach({ tabId }, '1.3').catch((e) => { if (!/already attached/i.test(e.message)) throw e; });
   dbg.add(tabId);
   inflight.set(tabId, new Map());
@@ -196,7 +202,7 @@ async function ready(tabId) {
 async function detach(tabId) {
   dbg.delete(tabId);
   inflight.delete(tabId);
-  await chrome.debugger.detach({ tabId }).catch(() => {});
+  await chrome.debugger?.detach({ tabId }).catch(() => {});
 }
 // A page call timed out: if a JS dialog is what froze it, answer it.
 async function unblock(tabId) {
@@ -206,6 +212,35 @@ async function unblock(tabId) {
     note('A JS dialog was blocking the page — TuffAgent accepted it.');
     return true;
   } catch { return false; }
+}
+
+// ── Firefox: no DevTools protocol, so the same jobs are done other ways ──
+// The page answers its own dialogs and reports them (content.js guard()), and
+// webRequest tracks the XHR/fetch requests of tabs the agent works in. Each
+// action's start is the cs() call that runs it.
+const guarded = new Set();
+const callAt = new Map();
+function watchTab(tabId) {
+  guarded.add(tabId);
+  callAt.set(tabId, performance.now());
+  if (!inflight.has(tabId)) inflight.set(tabId, new Map());
+}
+if (!CAN_DEBUG) {
+  const xhr = { urls: ['<all_urls>'], types: ['xmlhttprequest'] };
+  chrome.webRequest?.onBeforeRequest.addListener((d) => {
+    inflight.get(d.tabId)?.set(d.requestId, { at: performance.now(), key: String(d.url).split(/[?#]/)[0] });
+  }, xhr);
+  const end = (d) => inflight.get(d.tabId)?.delete(d.requestId);
+  chrome.webRequest?.onCompleted.addListener(end, xhr);
+  chrome.webRequest?.onErrorOccurred.addListener(end, xhr);
+  // Every window has its own sidebar: only the one working this tab answers.
+  chrome.runtime.onMessage.addListener((m, sender) => {
+    const tabId = sender.tab?.id;
+    if (!guarded.has(tabId)) return;
+    if (m?.tuffDialog) note(`The page showed a ${m.tuffDialog.type} dialog: “${clip(m.tuffDialog.message.trim(), 300)}” — TuffAgent accepted it.`);
+    else if (m?.tuffNet) return netQuiet(tabId, callAt.get(tabId) ?? 0);
+  });
+  chrome.tabs.onRemoved.addListener((id) => { guarded.delete(id); callAt.delete(id); inflight.delete(id); });
 }
 
 // After an action, wait for the XHR/fetch requests it started (search results,
@@ -242,6 +277,12 @@ async function settleAfter(tabId, t0, quiet = 80, cap = 700) {
 }
 export async function detachAll() {
   await Promise.all([...dbg].map(detach));
+  if (CAN_DEBUG) return;
+  const ids = [...guarded];
+  guarded.clear(); callAt.clear(); inflight.clear();
+  await Promise.all(ids.map((tabId) => chrome.scripting.executeScript({
+    target: { tabId }, func: () => window.__tuff?.unguard(),
+  }).catch(() => {})));
 }
 
 const MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform);
@@ -361,6 +402,7 @@ async function jsCdp(tabId, code) {
 // Real clipboard + ⌘V/Ctrl+V: a trusted paste for pages that ignore synthetic
 // ones. Focus emulation lets the page write the clipboard while the panel has focus.
 async function clipboardPaste(tabId, html, text) {
+  if (!CAN_DEBUG) return clipboardPasteFirefox(tabId, html, text);
   await cdp(tabId, 'Emulation.setFocusEmulationEnabled', { enabled: true });
   try {
     const items = { 'text/plain': text, ...(html ? { 'text/html': html } : {}) };
@@ -373,6 +415,17 @@ async function clipboardPaste(tabId, html, text) {
   } finally {
     cdp(tabId, 'Emulation.setFocusEmulationEnabled', { enabled: false }).catch(() => {});
   }
+}
+
+// Firefox: write the clipboard from the panel, then paste with the page's own
+// paste command, which the page sees as a real paste. Needs the optional
+// clipboard permissions, asked for when a message is sent (sidepanel.js).
+async function clipboardPasteFirefox(tabId, html, text) {
+  if (!(await chrome.permissions.contains({ permissions: ['clipboardRead', 'clipboardWrite'] })))
+    throw new Error('The page ignored the paste, and the clipboard fallback needs clipboard access. Ask the user to allow it (it is asked for when they send a message), or use type instead.');
+  const items = { 'text/plain': new Blob([text], { type: 'text/plain' }), ...(html ? { 'text/html': new Blob([html], { type: 'text/html' }) } : {}) };
+  await navigator.clipboard.write([new ClipboardItem(items)]).catch((e) => { throw new Error('Clipboard write failed: ' + e.message); });
+  if (!(await cs(tabId, 'execPaste'))) throw new Error('The page refused the paste. Use type instead.');
 }
 
 // Paste text / markdown / HTML at the caret (or into a ref). Synthetic paste
@@ -819,6 +872,7 @@ async function run(name, a) {
     }
 
     case 'tab_group': {
+      if (!chrome.tabs.group) throw new Error('Tab groups are not supported in this browser.');
       const ids = (a.tab_ids || []).map(Number);
       if (a.ungroup) { await chrome.tabs.ungroup(ids); return { text: `Ungrouped ${ids.length} tabs`, label: `Ungrouped ${ids.length} tabs` }; }
       const gid = await chrome.tabs.group({ tabIds: ids });
@@ -826,7 +880,7 @@ async function run(name, a) {
       if (a.title) upd.title = a.title;
       if (a.color) upd.color = a.color;
       if (a.collapsed != null) upd.collapsed = !!a.collapsed;
-      if (Object.keys(upd).length) await chrome.tabGroups.update(gid, upd);
+      if (Object.keys(upd).length && chrome.tabGroups) await chrome.tabGroups.update(gid, upd);
       return { text: `Group ${gid} with ${ids.length} tabs`, label: `Grouped ${ids.length} tabs${a.title ? ` as “${a.title}”` : ''}` };
     }
 
@@ -1071,6 +1125,7 @@ async function run(name, a) {
         if (r?.csp) {
           // Page CSP blocks eval — fall back to the DevTools protocol.
           if (cdpErr) throw new Error(`Page blocks eval and DevTools failed: ${cdpErr.message}`);
+          if (!CAN_DEBUG) throw new Error('This page blocks eval (CSP), so run_js cannot run here. Use read_page, find and the other tools instead.');
           r = await jsCdp(id, code);
           if (!agent.trusted) await detach(id);
         }
