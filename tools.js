@@ -10,6 +10,8 @@ export const agent = {
   windowId: null,
   trusted: false,
   overlay: true,
+  // What the page pill says while a tool runs (set by the panel per step).
+  label: '',
   touched: new Set(),
 };
 
@@ -107,7 +109,7 @@ function within(p, ms) {
 
 async function cs(tabId, method, ...args) {
   const target = { tabId };
-  const ov = agent.overlay ? 'TuffAgent is working' : null;
+  const ov = agent.overlay ? agent.label || 'Working' : null;
   // Calls that wait on purpose get their own wait on top.
   const ms = CS_TIMEOUT + (method === 'waitFor' ? Math.min(+args[0]?.timeout || 5000, 20000) : 0);
   const fx = !CAN_DEBUG;

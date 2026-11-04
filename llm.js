@@ -1,7 +1,7 @@
 // Minimal OpenRouter streaming client (OpenAI-compatible chat completions).
 
 const BASE = 'https://openrouter.ai/api/v1';
-const HEADERS = { 'HTTP-Referer': 'https://github.com/tuffagent', 'X-Title': 'TuffAgent' };
+const HEADERS = { 'HTTP-Referer': 'https://github.com/beckettclarke/TuffAgent', 'X-Title': 'TuffAgent' };
 // OpenRouter sends keep-alive comments while a model thinks, so this long a
 // silence means the stream is dead, not slow.
 const IDLE_MS = 120000;

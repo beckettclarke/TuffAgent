@@ -13,8 +13,16 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 const DEFAULTS = {
   apiKey: '', model: 'anthropic/claude-haiku-5.5', reasoning: 'auto', fast: true, overlay: true,
-  trusted: true, maxSteps: 100, unlimited: false, instructions: '', loader: 'line', recent: [], v: 3,
+  trusted: true, maxSteps: 100, unlimited: false, instructions: '', loader: 'line', theme: 'system', recent: [], v: 3,
 };
+// What the pill on the page says during a step. Typed text stays off the page,
+// and steps that aren't about this page (lookups, opening tabs) just say Working.
+function pageLabel(name, args) {
+  const [n] = normalize(name, args);
+  if (PARALLEL.has(n) || n === 'checklist') return '';
+  if (n === 'type' || n === 'paste') return 'Typing';
+  return preLabel(name, args);
+}
 // Retries per model call (rate limits, overloaded providers, dropped streams).
 const RETRIES = 5;
 // Tools that don't touch a page or each other; a run of these in one response starts together.
@@ -34,6 +42,8 @@ let cacheTail = true;
 // model's context window, reset when a new run starts.
 let squeeze = 0;
 const MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform);
+// Shortcut text for this platform: ⌘⇧O on macOS, Ctrl+Shift+O elsewhere.
+const keyCombo = (...k) => (MAC ? k.map((x) => ({ Mod: '⌘', Shift: '⇧', Alt: '⌥' })[x] || x).join('') : k.map((x) => (x === 'Mod' ? 'Ctrl' : x)).join('+'));
 // Current chat: messages above, plus a debug log of every run.
 let chatId = null;
 let chatCreated = 0;
@@ -298,17 +308,45 @@ class Turn {
     follow();
   }
   notice(text) { this.root.appendChild(el('div', 'notice', esc(text))); follow(); }
-  error(text, retry) {
-    const c = el('div', 'err-card', `<div class="et"><b>${fa('triangle-exclamation')}Something went wrong</b>${esc(text)}</div>`);
-    if (retry) {
+  error(text, retry, status) {
+    const help = errorHelp(status, text);
+    const c = el('div', 'err-card', `<div class="et"><b>${fa('triangle-exclamation')}${esc(help.title)}</b>${help.hint ? `${esc(help.hint)}<br><small class="raw">${esc(text)}</small>` : esc(text)}</div>`);
+    const acts = el('div', 'err-acts');
+    for (const a of help.actions) {
+      const b = a.href ? el('a', 'btn ghost sm', esc(a.label)) : el('button', 'btn ghost sm', esc(a.label));
+      if (a.href) Object.assign(b, { href: a.href, target: '_blank', rel: 'noopener' });
+      else b.onclick = () => { if (a.keep !== true) c.remove(); a.run(); };
+      acts.appendChild(b);
+    }
+    if (retry && help.retry !== false) {
       const b = el('button', 'btn ghost sm', 'Retry');
       b.onclick = () => { c.remove(); retry(); };
-      c.appendChild(b);
+      acts.appendChild(b);
     }
+    if (acts.children.length) c.appendChild(acts);
     this.root.appendChild(c);
     follow();
     field.at(c, 'fail');
   }
+}
+
+// Plain-language help for the errors people can fix themselves (key, credits, model).
+function errorHelp(status, text) {
+  if (status === 401 || /\b401\b|invalid api key|no auth/i.test(text)) {
+    return { title: 'Key rejected', hint: 'OpenRouter didn’t accept your key. It may have been revoked or deleted.', retry: false,
+      actions: [{ label: 'Update key', run: () => showOnboard() }] };
+  }
+  if (status === 402 || /\b402\b|insufficient credits|more credits/i.test(text)) {
+    return { title: 'Out of credits', hint: 'Your OpenRouter account needs more credit for this model. Add some, or switch to a free or cheaper model.',
+      actions: [{ label: 'Add credits', href: 'https://openrouter.ai/settings/credits' }, { label: 'Change model', keep: true, run: () => openPicker() }] };
+  }
+  if (status === 404 || /no endpoints found|not a valid model|model.{0,20}not (found|available)/i.test(text)) {
+    return { title: 'Model unavailable', hint: 'This model can’t take the request right now (or doesn’t support tools). Pick another one.',
+      actions: [{ label: 'Change model', keep: true, run: () => openPicker() }] };
+  }
+  if (status === 429) return { title: 'Rate limited', hint: 'The provider is busy. Wait a moment and retry, or try another model.', actions: [] };
+  if (/Connection to OpenRouter failed/.test(text) && !navigator.onLine) return { title: 'You’re offline', hint: 'Reconnect, then retry.', actions: [] };
+  return { title: 'Something went wrong', actions: [] };
 }
 
 // Rebuild the transcript from saved messages.
@@ -490,6 +528,7 @@ async function send(text) {
   text = text.trim();
   if (!text || running) return;
   askHostAccess();
+  remember(text);
   userBubble(text);
   follow(true);
   field.at(sendBtn, 'send');
@@ -588,6 +627,7 @@ async function run() {
         sv.label(preLabel(name, args || {}), args);
         acting++;
         activity.set('act', preLabel(name, args || {}), icon(name, args || {}));
+        agent.label = pageLabel(name, args || {});
         const s0 = performance.now();
         let content, label, ok = true, image;
         try {
@@ -756,7 +796,7 @@ async function run() {
     turn.clearWait();
     hitLimit = false;
     if (e.name === 'AbortError' || signal.aborted) { stopped = true; turn.notice('Stopped.'); }
-    else { log('error', { message: e.message, stack: e.stack }); turn.error(e.message, () => run()); }
+    else { log('error', { message: e.message, status: e.status, stack: e.stack }); turn.error(e.message, () => run(), e.status); }
   } finally {
     log('end', { steps, ms: Math.round(performance.now() - t0), cost, tokens, stopped, hitLimit });
     liveTotals(false);
@@ -785,8 +825,33 @@ const input = $('#input');
 const sendBtn = $('#sendBtn');
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 180) + 'px'; }
 function updateSend() { sendBtn.disabled = !running && !input.value.trim(); sendBtn.title = running ? 'Stop (Esc)' : 'Send (⏎)'; }
-input.addEventListener('input', () => { autosize(); updateSend(); });
+input.addEventListener('input', () => { autosize(); updateSend(); recall.i = -1; });
+
+// ↑ / ↓ in an empty composer (or at its first / last line) steps through earlier prompts.
+const recall = { list: [], i: -1, draft: '' };
+chrome.storage.local.get('prompts').then(({ prompts }) => { if (Array.isArray(prompts)) recall.list = prompts; });
+function remember(text) {
+  recall.list = [text, ...recall.list.filter((p) => p !== text)].slice(0, 50);
+  recall.i = -1;
+  chrome.storage.local.set({ prompts: recall.list }).catch(() => {});
+}
+function stepRecall(dir) {
+  const next = recall.i + dir;
+  if (next < -1 || next >= recall.list.length) return false;
+  if (recall.i === -1) recall.draft = input.value;
+  recall.i = next;
+  input.value = next === -1 ? recall.draft : recall.list[next];
+  autosize(); updateSend();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  return true;
+}
 input.addEventListener('keydown', (e) => {
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing) {
+    const v = input.value, at = input.selectionStart, to = input.selectionEnd;
+    const edge = at === to && (e.key === 'ArrowUp' ? !v.slice(0, at).includes('\n') : !v.slice(at).includes('\n'));
+    if ((!v || recall.i !== -1 || (e.key === 'ArrowUp' && at === 0)) && edge && stepRecall(e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); return; }
+  }
   if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
     const b = input.getBoundingClientRect();
     field.ripple(b.left + Math.min(b.width - 8, 8 + (input.value.length % 64) * 6.5), b.top + 10, 'key');
@@ -983,11 +1048,28 @@ function toast(text) {
   toastT = setTimeout(() => t.classList.remove('show'), 1800);
 }
 
+// Title text with the search terms marked.
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function marked(text, terms) {
+  if (!terms.length) return esc(text);
+  const re = new RegExp('(' + terms.map(reEsc).join('|') + ')', 'gi');
+  return text.split(re).map((part, i) => (i % 2 ? `<mark>${esc(part)}</mark>` : esc(part))).join('');
+}
+
+const histQ = $('#histQ');
+histQ.addEventListener('input', () => renderHistory());
+histQ.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); histList.querySelector('.hmain')?.click(); }
+});
+
 async function renderHistory() {
-  const { chats = [] } = await chrome.storage.local.get('chats');
+  const { chats: all = [] } = await chrome.storage.local.get('chats');
+  const terms = histQ.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const chats = terms.length ? all.filter((c) => terms.every((t) => `${c.title} ${c.model || ''}`.toLowerCase().includes(t))) : all;
   histList.innerHTML = '';
-  $('#exportAll').disabled = !chats.length;
-  if (!chats.length) { histList.appendChild(el('div', 'pick-empty', 'No chats yet.')); return; }
+  $('#exportAll').disabled = !all.length;
+  if (!all.length) { histList.appendChild(el('div', 'pick-empty', 'No chats yet.')); return; }
+  if (!chats.length) { histList.appendChild(el('div', 'pick-empty', `No chats match “${esc(histQ.value.trim())}”`)); return; }
   const day = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return +d; };
   const today = day(Date.now());
   let lastSec = '';
@@ -999,7 +1081,7 @@ async function renderHistory() {
     row.style.animationDelay = `${Math.min(i, 12) * 18}ms`;
     row.innerHTML = `<button class="hmain"><div class="htitle"></div><div class="hsub"></div></button>
       <button class="hact" title="Export log">${DL}</button><button class="hact del" title="Delete">${TRASH}</button>`;
-    row.querySelector('.htitle').textContent = c.title;
+    row.querySelector('.htitle').innerHTML = marked(c.title, terms);
     row.querySelector('.hsub').textContent = `${when(c.updated)} · ${c.model?.split('/').pop() || ''} · ${c.steps} step${c.steps === 1 ? '' : 's'}`;
     row.querySelector('.hmain').onclick = () => openChat(c.id);
     row.querySelector('.hact').onclick = () => exportChats([c.id]);
@@ -1066,7 +1148,13 @@ async function exportChats(ids) {
   toast(ids.length === 1 ? 'Log exported' : `Exported ${chats.length} chats`);
 }
 
-$('#historyBtn').onclick = () => { openSheet('#history'); renderHistory(); };
+$('#historyBtn').onclick = () => {
+  openSheet('#history');
+  histQ.value = '';
+  renderHistory();
+  histList.scrollTop = 0;
+  setTimeout(() => histQ.focus(), 60);
+};
 $('#exportAll').onclick = async () => {
   const { chats = [] } = await chrome.storage.local.get('chats');
   exportChats(chats.map((c) => c.id));
@@ -1084,6 +1172,8 @@ function openSettings() {
   $('#stepsRow').classList.toggle('off', S.unlimited);
   $('#setInstr').value = S.instructions;
   $('#setLoader').value = S.loader;
+  $('#setTheme').value = S.theme;
+  paintStorage();
   $('#setKey').textContent = S.apiKey ? `${S.apiKey.slice(0, 10)}…${S.apiKey.slice(-4)}` : '—';
   paintModel();
   openSheet('#settings');
@@ -1097,15 +1187,81 @@ $('#setSteps').onchange = (e) => { S.maxSteps = Math.max(1, Math.min(500, +e.tar
 $('#setUnlimited').onchange = (e) => { S.unlimited = e.target.checked; $('#stepsRow').classList.toggle('off', S.unlimited); save(); };
 $('#setInstr').oninput = (e) => { S.instructions = e.target.value; save(); };
 $('#setLoader').onchange = (e) => { S.loader = e.target.value; paintLoader(); save(); };
+$('#setTheme').onchange = (e) => { S.theme = e.target.value; paintTheme(); save(); };
+function paintTheme() {
+  document.documentElement.dataset.theme = S.theme;
+  field.rebuild();
+}
+
+// How many chats are saved and how much room they take.
+async function paintStorage() {
+  const { chats = [] } = await chrome.storage.local.get('chats');
+  let size = '';
+  try {
+    const bytes = await chrome.storage.local.getBytesInUse(null);
+    size = bytes >= 1048576 ? ` · ${(bytes / 1048576).toFixed(1)} MB` : ` · ${Math.max(1, Math.round(bytes / 1024))} KB`;
+  } catch {}
+  $('#setChats').textContent = chats.length ? `${chats.length} chat${chats.length === 1 ? '' : 's'} saved on this device${size}` : 'Nothing saved yet';
+  $('#clearChats').disabled = !chats.length;
+}
+const clearBtn = $('#clearChats');
+clearBtn.onclick = async () => {
+  if (!clearBtn.classList.contains('confirm')) {
+    clearBtn.classList.add('confirm'); clearBtn.textContent = 'Sure?';
+    setTimeout(() => { if (clearBtn.classList.contains('confirm')) { clearBtn.classList.remove('confirm'); clearBtn.textContent = 'Delete all'; } }, 2500);
+    return;
+  }
+  clearBtn.classList.remove('confirm'); clearBtn.textContent = 'Delete all';
+  await halt();
+  const { chats = [] } = await chrome.storage.local.get('chats');
+  await chrome.storage.local.remove(['chats', 'prompts', ...chats.map((c) => 'chat:' + c.id)]);
+  recall.list = []; recall.i = -1;
+  await newChat();
+  paintStorage();
+  toast(`Deleted ${chats.length} chat${chats.length === 1 ? '' : 's'}`);
+};
+
+// Shortcut list, using the browser's own binding for opening the panel (people can change it).
+async function paintKeys() {
+  let open = keyCombo('Mod', 'Shift', 'Y');
+  try {
+    const cmd = (await chrome.commands.getAll()).find((c) => c.name === '_execute_action' || c.name === '_execute_sidebar_action');
+    if (cmd) open = cmd.shortcut ? (MAC ? cmd.shortcut.replace(/Command|MacCtrl/g, (m) => (m === 'Command' ? '⌘' : '⌃')).replace('Shift', '⇧').replace('Alt', '⌥').replace(/\+/g, '') : cmd.shortcut) : 'Not set';
+  } catch {}
+  const rows = [
+    [open, FIREFOX ? 'Show or hide the sidebar' : 'Open the panel'],
+    ['⏎', 'Send'], [MAC ? '⇧⏎' : 'Shift+⏎', 'New line'], ['↑ ↓', 'Earlier prompts'],
+    ['Esc', 'Stop the agent, or close a sheet'], [keyCombo('Mod', 'Shift', 'O'), 'New chat'],
+  ];
+  // "⌘⇧O" → one key cap per symbol; "Ctrl+Shift+O", "↑ ↓" → one per part.
+  const kbd = (k) => {
+    if (k === 'Not set') return `<span>${k}</span>`;
+    const caps = /[+ ]/.test(k) || /^[A-Za-z]{2,}$/.test(k) ? k.split(/\+| /) : [...k];
+    return caps.map((c) => `<kbd>${esc(c)}</kbd>`).join('');
+  };
+  $('#keyList').innerHTML = rows.map(([k, what]) => `<dt>${kbd(k)}</dt><dd>${esc(what)}</dd>`).join('');
+}
 // Line or text (ASCII meter) loader in the composer while the agent works.
 function paintLoader() { document.body.dataset.loader = S.loader; }
 $('#setKeyBtn').onclick = () => { S.apiKey = ''; save(); closeSheets(); showOnboard(); };
 
 // Onboarding
 function showOnboard() {
+  closeSheets(true);
+  scrim.classList.remove('show');
   $('#onboard').hidden = false;
+  $('#obErr').textContent = '';
   setTimeout(() => $('#obKey').focus(), 50);
 }
+$('#obReveal').onclick = () => {
+  const k = $('#obKey'), b = $('#obReveal'), show = k.type === 'password';
+  k.type = show ? 'text' : 'password';
+  b.setAttribute('aria-pressed', String(show));
+  b.title = show ? 'Hide key' : 'Show key';
+  b.setAttribute('aria-label', b.title);
+  b.innerHTML = fa(show ? 'eye-slash' : 'eye');
+  k.focus();
+};
 $('#obForm').onsubmit = async (e) => {
   e.preventDefault();
   const key = $('#obKey').value.trim();
@@ -1123,7 +1279,7 @@ $('#obForm').onsubmit = async (e) => {
     const ob = $('#onboard');
     ob.style.transition = 'opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1)';
     ob.style.opacity = '0'; ob.style.transform = 'scale(1.02)';
-    setTimeout(() => { ob.hidden = true; ob.style.cssText = ''; input.focus(); }, 320);
+    setTimeout(() => { ob.hidden = true; ob.style.cssText = ''; $('#obKey').value = ''; $('#obKey').type = 'password'; input.focus(); }, 320);
   } catch (ex) {
     err.textContent = ex.message;
     field.at(btn, 'fail');
@@ -1141,6 +1297,10 @@ $('#obForm').onsubmit = async (e) => {
   ]);
   S = { ...DEFAULTS, ...(settings || {}) };
   paintLoader();
+  paintTheme();
+  paintKeys();
+  $('#ver').textContent = 'v' + chrome.runtime.getManifest().version;
+  $('#newBtn').title = `New chat (${keyCombo('Mod', 'Shift', 'O')})`;
   if ((settings?.v || 1) < 2) S.trusted = true;
   // 40 rounds was the old default and cut long tasks off mid-way.
   if ((settings?.v || 1) < 3 && S.maxSteps === 40) S.maxSteps = 100;

@@ -13,7 +13,7 @@ It reads pages, clicks, types, drags and works your tabs, with any tool-calling 
 
 <br>
 
-![Version](https://img.shields.io/badge/version-1.5.0-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Chrome](https://img.shields.io/badge/Chrome-121%2B-0a0a0a?style=flat-square&logo=googlechrome&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Firefox](https://img.shields.io/badge/Firefox-128%2B-0a0a0a?style=flat-square&logo=firefoxbrowser&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Manifest](https://img.shields.io/badge/Manifest-V3-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Models](https://img.shields.io/badge/models-OpenRouter-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Build](https://img.shields.io/badge/build-none-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a)
+![Version](https://img.shields.io/badge/version-1.6.0-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Chrome](https://img.shields.io/badge/Chrome-121%2B-0a0a0a?style=flat-square&logo=googlechrome&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Firefox](https://img.shields.io/badge/Firefox-128%2B-0a0a0a?style=flat-square&logo=firefoxbrowser&logoColor=white&labelColor=0a0a0a&color=3a3a3a) ![Manifest](https://img.shields.io/badge/Manifest-V3-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Models](https://img.shields.io/badge/models-OpenRouter-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a) ![Build](https://img.shields.io/badge/build-none-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3a3a3a)
 
 [Install](#install) · [Features](#features) · [Site packs](#site-packs) · [How it works](#how-it-works) · [Settings](#settings) · [Development](#development)
 
@@ -63,7 +63,7 @@ It reads pages, clicks, types, drags and works your tabs, with any tool-calling 
 ## Install
 
 > [!NOTE]
-> TuffAgent isn't on the Chrome Web Store or addons.mozilla.org. You load it unpacked, and there's nothing to build.
+> Until the store listings are live, load TuffAgent unpacked. There's nothing to build. To make the store uploads, see [Packaging](#packaging).
 
 ```bash
 git clone https://github.com/beckettclarke/TuffAgent.git
@@ -105,8 +105,12 @@ git clone https://github.com/beckettclarke/TuffAgent.git
 | --- | --- |
 | <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd> | Open the panel |
 | <kbd>⏎</kbd> | Send |
-| <kbd>Esc</kbd> | Stop the agent |
+| <kbd>⇧</kbd> <kbd>⏎</kbd> | New line |
+| <kbd>↑</kbd> <kbd>↓</kbd> | Step through earlier prompts (in an empty composer) |
+| <kbd>Esc</kbd> | Stop the agent, or close a sheet |
 | <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>O</kbd> | New chat |
+
+On Windows and Linux, use <kbd>Ctrl</kbd> for <kbd>⌘</kbd>. Settings lists the shortcuts with the keys your browser actually has bound.
 
 ## Features
 
@@ -237,7 +241,9 @@ After a click in a Canva design, the result says what got selected, for example 
 <summary><b>Look</b></summary>
 <br>
 
-The panel is monochrome, with icons from Font Awesome Pro (Sharp Regular, loaded from `beckettclarke.ca/css/fontawesome.css`, so icons need a connection). It follows the system light or dark theme.
+The panel is monochrome, with icons from Font Awesome Pro (Sharp Regular, loaded from `beckettclarke.ca/css/fontawesome.css`, so icons need a connection). It follows the system light or dark theme, or the one picked in Settings.
+
+On the page, the agent shows the same look: an ink frame with a paper hairline (so it reads on light and dark sites), a black cursor, and a pill at the bottom with the TuffAgent mark and the current step ("Clicking “Add to cart”"). Typed text never appears in the pill; it just says "Typing".
 
 Behind the panel is an ASCII field. Glyph brightness comes from slow noise, a soft lens under the pointer, and ripples sent from what happens (keystrokes, sending, each tool step starting and finishing, errors, the run ending). While the agent works, whatever it's busy with pulses, faster when it's acting than when it's thinking.
 
@@ -249,7 +255,7 @@ Every tool, and most of their variants (scroll up vs down, Enter vs Escape, Canv
 
 The line under the composer shows totals for the whole chat: time the agent spent working (time waiting on you doesn't count), tokens and cost. The numbers update live during a run.
 
-The clock button opens your chat history. Click a chat to reopen it, use the download icon to export that chat's log, or use **Export all**. An export is a JSON file with every message and tool call (input and result), the page URL after each action, model timings (time to first token and total), token use and cost, and errors. It also includes the settings and system prompt in effect. **API keys are never included.**
+The clock button opens your chat history. Search by title or model, click a chat to reopen it, use the download icon to export that chat's log, or use **Export all**. **Settings › Chat history** shows how much is saved and can delete everything at once. An export is a JSON file with every message and tool call (input and result), the page URL after each action, model timings (time to first token and total), token use and cost, and errors. It also includes the settings and system prompt in effect. **API keys are never included.**
 
 ## Settings
 
@@ -257,12 +263,18 @@ The clock button opens your chat history. Click a chat to reopen it, use the dow
 | --- | --- | --- |
 | Model | Claude Haiku 5.5 | Any OpenRouter model that supports tools. The picker is also in the composer. |
 | Reasoning | Auto | Effort for reasoning models: Auto, Low, Medium or High. |
+| Theme | System | System, Light or Dark. |
 | Loader | Line | A soft line on the composer's edge, or an ASCII meter. |
 | Fastest providers | On | Routes to the lowest-latency host. |
 | Page highlight | On | Glow and cursor on pages the agent controls. |
 | Trusted input | On | Real mouse and keyboard events through the DevTools protocol. Chrome shows a debugging bar while the agent acts. Hidden in Firefox, which doesn't have it. |
 | Step limit | 100 | Model rounds per request. Can be turned off. |
 | Custom instructions | — | Added to the system prompt. |
+| Chat history | — | How many chats are saved and how much space they use, with **Delete all**. |
+
+Settings also lists the keyboard shortcuts and links to the source, the privacy policy and the issue tracker.
+
+When a run fails for a reason you can fix, the error says what to do: a rejected key offers **Update key**, an empty balance offers **Add credits** and **Change model**, and a model that can't take the request offers **Change model**.
 
 ## Development
 
@@ -277,6 +289,14 @@ npx web-ext run
 ```bash
 npx web-ext lint --ignore-files 'test/**' '.github/**'
 ```
+
+### Packaging
+
+```bash
+node scripts/pack.mjs
+```
+
+Writes `dist/tuffagent-<version>-chrome.zip` and `dist/tuffagent-<version>-firefox.zip`, each with a manifest trimmed for its browser. [`STORE.md`](STORE.md) has the listing copy, permission justifications, privacy answers and the review risks to expect.
 
 ### Tests
 
@@ -313,12 +333,15 @@ python3 -m http.server
 | [`activity.js`](activity.js) · [`field.js`](field.js) · [`icons.js`](icons.js) | Activity strip, ASCII field, tool icons |
 | [`sites/`](sites) | Site packs (Google Docs, Canva) |
 | [`test/`](test) | Unit tests and browser fixtures |
+| [`scripts/pack.mjs`](scripts/pack.mjs) | Builds the Chrome and Firefox store zips |
+| [`PRIVACY.md`](PRIVACY.md) · [`STORE.md`](STORE.md) | Privacy policy, and the store submission kit |
 
 ## Privacy
 
 - Your OpenRouter key is kept in the extension's local storage on this device and sent only to OpenRouter.
 - Page content goes to the model you choose, through OpenRouter, only while the agent is working on a task.
 - Chats and logs stay in the browser unless you export them.
+- The full policy is in [`PRIVACY.md`](PRIVACY.md).
 
 > [!WARNING]
 > TuffAgent can click, type and run JavaScript on any site you're signed in to. Give it tasks you'd be comfortable doing yourself, and watch the first runs on sites that matter.

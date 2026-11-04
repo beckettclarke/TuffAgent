@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TuffAgent",
-  "version": "1.5.0",
+  "version": "1.6.0",
+  "homepage_url": "https://github.com/beckettclarke/TuffAgent",
   "description": "A fast browser agent in your sidebar. Bring any model through OpenRouter.",
   "minimum_chrome_version": "121",
   "browser_specific_settings": {

@@ -25,8 +25,30 @@
   color-scheme: dark;
 }
 
+/* Light theme: follows the system unless a theme is picked in settings. */
+:root[data-theme="light"] {
+    --bg: #f1f1ef;
+    --panel: #f6f6f4;
+    --raise: #fafaf9;
+    --raise-2: #e9e9e6;
+    --glass: rgba(241, 241, 239, .8);
+    --hover: rgba(0, 0, 0, .04);
+    --line: rgba(0, 0, 0, .08);
+    --line-2: rgba(0, 0, 0, .14);
+    --line-3: rgba(0, 0, 0, .34);
+    --fg: #0c0c0c;
+    --fg-2: #5a5a5a;
+    --fg-3: #9a9a9a;
+    --accent-soft: rgba(0, 0, 0, .06);
+    --err: #c8302f;
+    --err-soft: rgba(200, 48, 47, .06);
+    --field-ink: #000;
+    --field-gain: .7;
+    --shadow: 0 24px 60px -24px rgba(0, 0, 0, .25);
+    color-scheme: light;
+}
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #f1f1ef;
     --panel: #f6f6f4;
     --raise: #fafaf9;
@@ -656,3 +678,49 @@ body.running .send .sq { transform: none; opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ── Onboarding extras ── */
+.ob-steps { list-style: none; margin: -12px 0 22px; padding: 0; border-top: 1px solid var(--line); }
+.ob-steps li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--fg-2); }
+.ob-steps li span { font: 10px var(--mono); color: var(--fg-3); }
+.ob-steps a, .ob-fine a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
+.ob-steps a:hover, .ob-fine a:hover { text-decoration-color: var(--fg); }
+.field input { padding-right: 38px; }
+.reveal {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 2px; display: grid; place-items: center; color: var(--fg-3);
+  transition: color .15s, background .15s;
+}
+.reveal:hover { color: var(--fg); background: var(--hover); }
+.reveal i { font-size: 12px; }
+.ob-fine { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; color: var(--fg-3); }
+
+/* ── Error card actions ── */
+.err-card .err-acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.err-card a.btn { text-decoration: none; }
+
+/* ── Settings extras ── */
+.set-sec { font: 600 9.5px var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--fg-3); padding: 18px 10px 6px; }
+.keys { margin: 0; padding: 0 10px; display: grid; grid-template-columns: auto 1fr; gap: 0 14px; }
+.keys dt, .keys dd { margin: 0; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.keys dt { display: flex; gap: 3px; align-items: center; }
+.keys dd { color: var(--fg-2); }
+.keys kbd {
+  min-width: 18px; height: 18px; padding: 0 4px; display: inline-grid; place-items: center;
+  font: 10px var(--mono); color: var(--fg); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 2px; background: var(--raise);
+}
+.about { padding: 22px 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.about-id { display: flex; align-items: center; gap: 9px; }
+.about-id .mark { width: 14px; height: 14px; }
+.about-id .word { font-size: 10px; }
+.ver { font: 10px var(--mono); color: var(--fg-3); padding-left: 9px; border-left: 1px solid var(--line-2); }
+.about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; }
+.about-links a { font: 10.5px var(--mono); color: var(--fg-3); text-decoration: none; transition: color .15s; }
+.about-links a:hover { color: var(--fg); }
+
+/* ── History search ── */
+#history .sheet-head { padding-top: 0; }
+#history .hist-hint { padding: 8px 18px 14px; border-top: 1px solid var(--line); }
+.hist mark { background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 -1px 0 var(--line-3); }
+.onboard { overflow-y: auto; }
+.err-card .raw { display: block; margin-top: 4px; font: 10.5px/1.5 var(--mono); color: var(--fg-3); overflow-wrap: anywhere; }

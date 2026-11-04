@@ -1564,22 +1564,28 @@
   // ── Visual feedback: glow frame + ghost cursor, all pointer-events: none ──
   const fx = (() => {
     let host, root, cursorEl, frame, pill, marksEl, hideT, shown = false;
+    // Monochrome, like the panel: an ink frame with a paper hairline reads on light and dark pages alike.
     const css = `
       :host { all: initial; }
-      .frame { position: fixed; inset: 0; pointer-events: none; border-radius: 0; opacity: 0;
-        box-shadow: inset 0 0 0 2px rgba(255,112,67,.85), inset 0 0 36px 2px rgba(255,112,67,.28);
+      .frame { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+        box-shadow: inset 0 0 0 2px rgba(10,10,10,.9), inset 0 0 0 3px rgba(255,255,255,.7), inset 0 0 40px 2px rgba(10,10,10,.16);
         transition: opacity .28s ease; }
-      .frame.on { opacity: 1; animation: breathe 2.6s ease-in-out infinite; }
-      @keyframes breathe { 50% { box-shadow: inset 0 0 0 2px rgba(255,150,90,.95), inset 0 0 52px 4px rgba(255,112,67,.38); } }
+      .frame.on { opacity: 1; animation: breathe 2.8s ease-in-out infinite; }
+      @keyframes breathe { 50% { box-shadow: inset 0 0 0 2px rgba(10,10,10,.9), inset 0 0 0 3px rgba(255,255,255,.85), inset 0 0 56px 4px rgba(10,10,10,.24); } }
       .pill { position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
-        font: 500 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; letter-spacing: .01em;
-        color: #fff; background: rgba(20,20,22,.82); backdrop-filter: blur(12px) saturate(1.4);
-        padding: 8px 12px 8px 10px; border-radius: 999px; display: flex; gap: 8px; align-items: center;
-        box-shadow: 0 8px 30px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.08);
-        transition: opacity .25s ease, transform .35s cubic-bezier(.2,.9,.25,1.15); }
+        display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px 0 9px; max-width: calc(100vw - 40px);
+        font: 600 10px/1 ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase;
+        color: #ececec; background: rgba(10,10,10,.9); backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,.13); border-radius: 3px;
+        box-shadow: 0 10px 30px -8px rgba(0,0,0,.45);
+        transition: opacity .25s ease, transform .35s cubic-bezier(.16,1,.3,1); }
       .pill.on { opacity: 1; transform: translate(-50%, 0); }
-      .dot { width: 7px; height: 7px; border-radius: 50%; background: #ff7043; box-shadow: 0 0 0 0 rgba(255,112,67,.7); animation: ping 1.4s ease-out infinite; }
-      @keyframes ping { 70% { box-shadow: 0 0 0 7px rgba(255,112,67,0); } 100% { box-shadow: 0 0 0 0 rgba(255,112,67,0); } }
+      .pill svg { width: 14px; height: 14px; flex: none; }
+      .pill .sep { width: 1px; height: 12px; background: rgba(255,255,255,.18); flex: none; }
+      .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #9a9a9a; max-width: 46ch;
+        font: 500 12px/1 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
+      .dot { width: 5px; height: 5px; background: #ececec; flex: none; animation: blink 1s steps(2) infinite; }
+      @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
       .cursor { position: fixed; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; opacity: 0;
         transform: translate(var(--x), var(--y)); transition: transform .2s cubic-bezier(.2,.8,.2,1), opacity .2s ease;
         filter: drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
@@ -1596,10 +1602,11 @@
       .rule::before { content: ''; position: absolute; background: #c2185b; }
       .rule.x::before { left: 50%; top: 10px; width: 1px; height: 5px; }
       .rule.y::before { top: 50%; left: 100%; margin-left: 2px; width: 5px; height: 1px; }
-      .ripple { position: fixed; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; pointer-events: none;
-        border: 2px solid rgba(255,112,67,.9); animation: rip .5s cubic-bezier(.2,.7,.3,1) forwards; }
+      .ripple { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; pointer-events: none; box-sizing: border-box;
+        border: 2px solid rgba(10,10,10,.85); box-shadow: 0 0 0 1px rgba(255,255,255,.75), inset 0 0 0 1px rgba(255,255,255,.75);
+        animation: rip .5s cubic-bezier(.2,.7,.3,1) forwards; }
       @keyframes rip { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
-      @media (prefers-reduced-motion: reduce) { .frame.on, .dot { animation: none; } .cursor { transition: none; } }`;
+      @media (prefers-reduced-motion: reduce) { .frame.on, .dot { animation: none; } .cursor, .pill { transition: none; } }`;
     function ensure() {
       if (host?.isConnected) return;
       host = document.createElement('div');
@@ -1607,8 +1614,8 @@
       host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;';
       root = host.attachShadow({ mode: 'open' });
       root.innerHTML = `<style>${css}</style><div class="frame"></div>
-        <div class="pill"><span class="dot"></span><span class="label">TuffAgent is working</span></div>
-        <svg class="cursor" viewBox="0 0 24 24" style="--x:-40px;--y:-40px"><path d="M4 2.5l15 8.2-6.6 1.6-3.1 6.3z" fill="#ff7043" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <div class="pill" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5" fill="#ececec"/><path d="M6.5 7.5h11M12.9 7.5 10.4 18" stroke="#0a0a0a" stroke-width="2.6" stroke-linecap="square" fill="none"/></svg><span>TuffAgent</span><i class="sep"></i><span class="label">Working</span><span class="dot"></span></div>
+        <svg class="cursor" viewBox="0 0 24 24" style="--x:-40px;--y:-40px"><path d="M4 2.5l15 8.2-6.6 1.6-3.1 6.3z" fill="#0a0a0a" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <div class="marks"></div>`;
       marksEl = root.querySelector('.marks');
       frame = root.querySelector('.frame');

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -25,20 +25,20 @@
         <span class="status" id="status">idle</span>
       </div>
       <div class="top-actions">
-        <button id="newBtn" class="icon-btn" title="New chat (⌘⇧O)">
+        <button id="newBtn" class="icon-btn" title="New chat" aria-label="New chat">
           <i class="fa-sharp fa-regular fa-plus" aria-hidden="true"></i>
         </button>
-        <button id="historyBtn" class="icon-btn" title="History">
+        <button id="historyBtn" class="icon-btn" title="History" aria-label="History">
           <i class="fa-sharp fa-regular fa-clock-rotate-left" aria-hidden="true"></i>
         </button>
-        <button id="settingsBtn" class="icon-btn" title="Settings">
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
           <i class="fa-sharp fa-regular fa-sliders" aria-hidden="true"></i>
         </button>
       </div>
       <div class="progress"></div>
     </header>
 
-    <main id="scroll">
+    <main id="scroll" aria-label="Conversation">
       <section id="empty" class="empty">
         <div class="eyebrow"><span>New session</span><i></i><span>Ready</span></div>
         <h1>What should we<br>get done?</h1>
@@ -62,7 +62,7 @@
     </main>
 
     <footer class="dock">
-      <button id="jump" class="jump" title="Jump to latest">
+      <button id="jump" class="jump" title="Jump to latest" aria-label="Jump to latest">
         <i class="fa-sharp fa-regular fa-arrow-down" aria-hidden="true"></i>
       </button>
       <div class="composer" id="composer">
@@ -78,7 +78,7 @@
         <div class="bouncer" aria-hidden="true"><i></i><i></i></div>
         <div class="input-row">
           <span class="prompt" aria-hidden="true">›</span>
-          <textarea id="input" rows="1" placeholder="Tell it what to do" spellcheck="false"></textarea>
+          <textarea id="input" rows="1" placeholder="Tell it what to do" spellcheck="false" aria-label="Message TuffAgent"></textarea>
         </div>
         <div class="composer-row">
           <div id="tabChip" class="tab-chip" title="Current tab">
@@ -86,12 +86,12 @@
             <img id="tabIcon" alt="">
             <span id="tabTitle">No tab</span>
           </div>
-          <button id="modelBtn" class="model-chip" title="Choose model">
+          <button id="modelBtn" class="model-chip" title="Choose model" aria-label="Choose model">
             <i class="fa-sharp fa-regular fa-microchip" aria-hidden="true"></i>
             <span id="modelName" class="model-name">Model</span>
             <i class="chev fa-sharp fa-regular fa-chevron-down" aria-hidden="true"></i>
           </button>
-          <button id="sendBtn" class="send" title="Send (⏎)" disabled>
+          <button id="sendBtn" class="send" title="Send (⏎)" aria-label="Send" disabled>
             <i class="arrow fa-sharp fa-regular fa-arrow-up" aria-hidden="true"></i>
             <span class="sq"></span>
           </button>
@@ -109,32 +109,39 @@
         <div class="eyebrow"><svg class="mark"><use href="#i-mark"/></svg><span>TuffAgent</span><i></i><span>Setup</span></div>
         <h1>Connect a model.</h1>
         <p class="sub">Paste an OpenRouter key to run Claude, GPT, Gemini, Grok, Qwen and hundreds more. It stays on this device.</p>
+        <ol class="ob-steps">
+          <li><span>01</span>Make a free account at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai</a></li>
+          <li><span>02</span>Create a key, and add credit for paid models</li>
+          <li><span>03</span>Paste it below</li>
+        </ol>
         <form id="obForm">
           <div class="field">
             <i class="fa-sharp fa-regular fa-key" aria-hidden="true"></i>
-            <input id="obKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+            <input id="obKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-label="OpenRouter API key">
+            <button class="reveal" id="obReveal" type="button" title="Show key" aria-label="Show key" aria-pressed="false"><i class="fa-sharp fa-regular fa-eye" aria-hidden="true"></i></button>
           </div>
           <button class="btn primary" id="obGo" type="submit"><span>Connect</span><i class="go fa-sharp fa-regular fa-arrow-right" aria-hidden="true"></i><i class="spin"></i></button>
           <p class="ob-err" id="obErr"></p>
         </form>
         <a class="ob-link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key — openrouter.ai/keys ↗</a>
+        <p class="ob-fine">TuffAgent can click, type and run scripts on pages you're signed in to, and sends page content to the model you pick only while it works on a task. <a href="https://github.com/beckettclarke/TuffAgent/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy policy</a></p>
       </div>
     </section>
 
     <div id="scrim" class="scrim"></div>
 
-    <section id="picker" class="sheet" aria-hidden="true">
+    <section id="picker" class="sheet" role="dialog" aria-modal="true" aria-label="Choose a model" aria-hidden="true">
       <div class="grab"></div>
       <div class="sheet-head">
         <div class="search">
           <i class="fa-sharp fa-regular fa-magnifying-glass" aria-hidden="true"></i>
-          <input id="pickQ" placeholder="Search 300+ models…" spellcheck="false" autocomplete="off">
+          <input id="pickQ" placeholder="Search 300+ models…" spellcheck="false" autocomplete="off" aria-label="Search models">
         </div>
       </div>
       <div id="pickList" class="pick-list"></div>
     </section>
 
-    <section id="history" class="sheet" aria-hidden="true">
+    <section id="history" class="sheet" role="dialog" aria-modal="true" aria-label="History" aria-hidden="true">
       <div class="grab"></div>
       <div class="sheet-title bar">
         <span>History</span>
@@ -142,11 +149,17 @@
           <i class="fa-sharp fa-regular fa-file-export" aria-hidden="true"></i>Export all
         </button>
       </div>
-      <p class="hist-hint">Exports are JSON logs with every message, tool call, result, and timing — handy for debugging the agent.</p>
+      <div class="sheet-head">
+        <div class="search">
+          <i class="fa-sharp fa-regular fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="histQ" placeholder="Search chats…" spellcheck="false" autocomplete="off" aria-label="Search chats">
+        </div>
+      </div>
       <div id="histList" class="hist-list"></div>
+      <p class="hist-hint">Exports are JSON logs with every message, tool call, result and timing. API keys are never included.</p>
     </section>
 
-    <section id="settings" class="sheet" aria-hidden="true">
+    <section id="settings" class="sheet" role="dialog" aria-modal="true" aria-label="Settings" aria-hidden="true">
       <div class="grab"></div>
       <div class="sheet-title">Settings</div>
       <div class="set-body">
@@ -158,6 +171,12 @@
           <i class="set-ic fa-sharp fa-regular fa-brain" aria-hidden="true"></i><div><b>Reasoning</b><small>Higher effort thinks longer before acting</small></div>
           <select id="setReasoning">
             <option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          </select>
+        </label>
+        <label class="set-row">
+          <i class="set-ic fa-sharp fa-regular fa-circle-half-stroke" aria-hidden="true"></i><div><b>Theme</b><small>Match the system, or pick one</small></div>
+          <select id="setTheme">
+            <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
           </select>
         </label>
         <label class="set-row">
@@ -194,7 +213,21 @@
           <i class="set-ic fa-sharp fa-regular fa-key" aria-hidden="true"></i><div><b>OpenRouter key</b><small id="setKey">—</small></div>
           <button class="btn ghost sm danger" id="setKeyBtn" type="button">Disconnect</button>
         </div>
-        <p class="set-foot">Shortcut: ⌘⇧Y opens the panel · Esc stops the agent</p>
+        <div class="set-row">
+          <i class="set-ic fa-sharp fa-regular fa-box-archive" aria-hidden="true"></i><div><b>Chat history</b><small id="setChats">—</small></div>
+          <button class="btn ghost sm danger" id="clearChats" type="button">Delete all</button>
+        </div>
+        <div class="set-sec">Shortcuts</div>
+        <dl class="keys" id="keyList"></dl>
+        <div class="about">
+          <div class="about-id"><svg class="mark"><use href="#i-mark"/></svg><span class="word">TuffAgent</span><span class="ver" id="ver"></span></div>
+          <nav class="about-links">
+            <a href="https://github.com/beckettclarke/TuffAgent" target="_blank" rel="noopener">Source</a>
+            <a href="https://github.com/beckettclarke/TuffAgent/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy</a>
+            <a href="https://github.com/beckettclarke/TuffAgent/issues/new" target="_blank" rel="noopener">Report a problem</a>
+            <a href="https://openrouter.ai/settings/credits" target="_blank" rel="noopener">Credits</a>
+          </nav>
+        </div>
       </div>
     </section>
   </div>

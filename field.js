@@ -160,6 +160,8 @@ export const field = {
     if (ripples.length >= MAX_RIPPLES) ripples.shift();
     ripples.push({ x, y, t0: performance.now() / 1000, ...KINDS[kind] });
   },
+  // Redraw the glyph atlas after the theme changes (ink colour and gain come from CSS).
+  rebuild() { build(); },
   // Ripple from the centre of an element (or a DOMRect).
   at(target, kind) {
     const b = target?.getBoundingClientRect ? target.getBoundingClientRect() : target;
