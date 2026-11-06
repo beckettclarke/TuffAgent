@@ -1,5 +1,5 @@
 // Browser tools. Everything here runs in the side panel and talks to Chrome
-// APIs directly, so each action is a single round trip.
+// APIs directly, so each action is a single round trip. 
 import { CAN_DEBUG, FIREFOX } from './compat.js';
 import './keys.js';
 import { mdToHtml, htmlToText } from './docmd.js';
