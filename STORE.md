@@ -52,16 +52,16 @@ Bump `version` in `manifest.json` before each upload. Both stores reject a versi
 **Support:** https://github.com/beckettclarke/TuffAgent/issues
 **Privacy policy URL:** https://github.com/beckettclarke/TuffAgent/blob/main/PRIVACY.md
 
-## 3. Images still needed
+## 3. Images
+
+All of these are in [`branding/`](branding) (see its README for regenerating them):
 
 | Asset | Chrome Web Store | AMO |
 | --- | --- | --- |
-| Icon | 128×128 PNG (in the zip already; the store prefers ~96×96 artwork centred with transparent padding) | Taken from the zip |
-| Screenshots | 1–5 at 1280×800 or 640×400 | Up to 10, any size, 1280×800 recommended |
-| Small promo tile | 440×280, **required** | — |
-| Marquee | 1400×560, optional | — |
-
-The panel shots in `.github/assets/` are a good starting point, but need re-cropping to these sizes.
+| Icon | `branding/chrome-web-store/icon-128.png` (96×96 artwork centred in 128×128, transparent padding) | Taken from the zip |
+| Screenshots | `branding/chrome-web-store/dark/screenshot-{1..5}-1280x800.png` (640×400 copies alongside; light set in `light/`) | The same 1280×800 files |
+| Small promo tile | `branding/chrome-web-store/dark/promo-small-440x280.png` (**required**) | — |
+| Marquee | `branding/chrome-web-store/dark/promo-marquee-1400x560.png` (optional) | — |
 
 ## 4. Single purpose (Chrome)
 

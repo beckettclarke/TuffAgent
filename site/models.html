@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Models and cost · TuffAgent</title>
+<meta name="description" content="TuffAgent works with any tool-calling model on OpenRouter, including Claude, GPT, Gemini, Grok, Qwen and Kimi. How to choose one, and what tasks cost.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="Models and cost · TuffAgent">
+<meta property="og:description" content="TuffAgent works with any tool-calling model on OpenRouter, including Claude, GPT, Gemini, Grok, Qwen and Kimi. How to choose one, and what tasks cost.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html" aria-current="page">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="51" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Models and cost</p>
+    <h1 class="rise d1">Bring your own model</h1>
+    <p class="lede rise d2">TuffAgent doesn’t come with a model of its own. You connect an OpenRouter key and choose from hundreds of models made by Anthropic, OpenAI, Google, xAI, Moonshot, Alibaba and others. OpenRouter bills you directly, and TuffAgent never sees your payment details.</p>
+    
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Setup</p>
+      <h2>How OpenRouter fits in</h2>
+      <p class="lede">OpenRouter is a single API in front of many model providers. One key and one balance cover all of them.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><span class="k">Step 01</span><h3>Make an account</h3><p>Sign up at <a href="https://openrouter.ai">openrouter.ai</a>. Add credit if you want paid models; some models are free, with rate limits.</p></div>
+      <div class="fact"><span class="k">Step 02</span><h3>Create a key</h3><p>Create a key at <a href="https://openrouter.ai/keys">openrouter.ai/keys</a> and paste it into TuffAgent. It’s stored only in your browser.</p></div>
+      <div class="fact"><span class="k">Step 03</span><h3>Pick a model</h3><p>Choose one from the composer. You can change it at any time, including in the middle of a chat.</p></div>
+      <div class="fact"><span class="k">Optional</span><h3>Set provider rules</h3><p>In your OpenRouter settings you can limit which providers are used and whether they may store or train on your prompts.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Choosing</p>
+      <h2>Which model to use</h2>
+      <p class="lede">The picker lists every OpenRouter model that supports tool calling, with its context size, whether it accepts images, and its price per million input and output tokens.</p>
+    </div>
+    <div class="hero-shot" style="margin:0 0 clamp(48px,6vw,72px)">
+      <picture><source srcset="assets/img/scene-4-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/scene-4-light.webp" alt="The model picker open in the TuffAgent panel, with recent models and a Fast and capable section listing Claude, GPT, Gemini, Grok, Kimi and Qwen models." width="1152" height="640" loading="lazy" decoding="async"></picture>
+    </div>
+    <div class="split" style="align-items:start">
+      <div>
+        <h3 style="font-size:1.45rem;letter-spacing:-.02em">A few things that matter for an agent</h3>
+        <p>An agent makes many calls per task, and each one carries the page it’s looking at. That makes some model traits matter more than they would in a chat.</p>
+      </div>
+      <div>
+        <ul>
+          <li><strong>Tool use comes first.</strong> Models that follow tool instructions well finish tasks in fewer rounds, which can make a pricier model cost less per task.</li>
+          <li><strong>Images help on some sites.</strong> Models that accept images can use screenshots, which is useful for canvas-based apps and crowded layouts.</li>
+          <li><strong>Bigger models for longer tasks.</strong> Long, many-step tasks go better with larger models. For short jobs, like summarizing a page or opening a few tabs, a small, fast model is plenty.</li>
+          <li><strong>Reasoning effort is a trade-off.</strong> For models that think before answering, higher effort is slower and costs more. Auto is a good default.</li>
+        </ul>
+        <p class="muted" style="font-size:15.5px">The default is Claude Haiku 5.5. The picker’s <em>Fast &amp; capable</em> section lists a handful of other good starting points.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="split flip">
+      <div>
+        <p class="eyebrow">Cost</p>
+        <h2>What a task costs</h2>
+        <p>Cost depends on the model’s price and how many rounds the task takes. Each round sends the conversation so far, including page snapshots, so long tasks on large pages use more tokens.</p>
+        <p>TuffAgent keeps that down by trimming old tool output, dropping old screenshots and keeping prompts friendly to the provider’s cache. The line under the composer shows the running total for the chat, and each finished run lists its own tokens and cost.</p>
+        <p>The extension itself is free. There’s nothing to subscribe to.</p>
+      </div>
+      <div class="stage"><div class="field" data-field="52" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-shop-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-shop-light.webp" alt="A finished run in the TuffAgent panel, ending with its step count, time, tokens and cost." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="split" style="align-items:start">
+      <div>
+        <p class="eyebrow">Latency</p>
+        <h2>Fastest providers</h2>
+      </div>
+      <div>
+        <p class="lede" style="margin-top:0">With <strong>Fastest providers</strong> on, which is the default, OpenRouter sends each request to whichever host has the lowest latency for that model. An agent’s turns are short, so the time to the first token matters more than raw output speed.</p>
+        <p class="muted">Turn it off in Settings if you’d rather OpenRouter pick providers by price or by the rules in your account.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="field" data-field="33" data-lens></div>
+  <div class="wrap">
+    <h2>Add TuffAgent to your browser.</h2>
+    <p>Setup takes a couple of minutes: install the extension, paste an OpenRouter key, and open the sidebar with <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd>, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux.</p>
+    <div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div>
+    <p class="fine">Prefer to run it from source? <a href="install.html#source">See the manual install steps</a>.</p>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

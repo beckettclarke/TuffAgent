@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog · TuffAgent</title>
+<meta name="description" content="Release notes for every version of TuffAgent, the browser agent for Chrome and Firefox.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="Changelog · TuffAgent">
+<meta property="og:description" content="Release notes for every version of TuffAgent, the browser agent for Chrome and Firefox.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html" aria-current="page">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="81" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Changelog</p>
+    <h1 class="rise d1">What’s new</h1>
+    <p class="lede rise d2">Every release of TuffAgent, newest first. The full history is in the commit log on GitHub.</p>
+    
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <article class="release" id="v1.6.0">
+      <div><div class="v">1.6.0<span class="tag">Latest</span></div><time datetime="2026-11-04">November 4, 2026</time></div>
+      <div><h3>Firefox</h3><ul><li>TuffAgent now runs in Firefox 128 and later, in the sidebar.</li><li>Without the DevTools protocol, page dialogs are answered from inside the page, actions wait on the network through <code>webRequest</code>, and pasting uses the page’s own paste command.</li></ul><h3>Panel</h3><ul><li>Theme setting: System, Light or Dark.</li><li>History search, with matches highlighted.</li><li><kbd>↑</kbd> and <kbd>↓</kbd> in an empty composer step through earlier prompts.</li><li>Errors you can fix say how: <strong>Update key</strong> for a rejected key, <strong>Add credits</strong> and <strong>Change model</strong> for an empty balance, <strong>Change model</strong> for a model that can’t take the request.</li><li>Settings shows how many chats are saved and how much space they use, with Delete all, and lists shortcuts using the keys your browser actually has bound.</li><li>Onboarding lists the setup steps, can show or hide the key, and explains what data is sent.</li><li>Labels and dialog roles for screen readers.</li></ul><h3>On the page</h3><ul><li>The overlay matches the panel: an ink frame with a light hairline that reads on light and dark sites, a black cursor, and a label at the bottom with the current step.</li><li>Typed text never appears in that label.</li></ul><h3>Store</h3><ul><li>Store packages for Chrome and Firefox, a privacy policy, and store listings.</li></ul></div>
+    </article>
+    <article class="release" id="v1.5.0">
+      <div><div class="v">1.5.0</div><time datetime="2026-10-24">October 24, 2026</time></div>
+      <div><h3>Look</h3><ul><li>A monochrome redesign of the side panel.</li><li>An ASCII field behind the panel that ripples when things happen (typing, sending, each step starting and finishing, errors) and pulses while the agent works.</li><li>An icon for every tool and most of their variants.</li><li>An activity strip in the composer showing whether the agent is waiting, thinking, writing, planning or acting, with a timer.</li><li>Copy buttons under messages, and the model picker moved into the composer.</li></ul><h3>Speed</h3><ul><li>Independent tool calls in one response (opening tabs, listing tabs, searching history, bookmarks and downloads) now run at the same time.</li></ul><h3>Site packs</h3><ul><li>New Canva pack.</li></ul></div>
+    </article>
+    <article class="release" id="v1.4.0">
+      <div><div class="v">1.4.0</div><time datetime="2026-10-23">October 23, 2026</time></div>
+      <div><h3>Reading and aiming</h3><ul><li>Snapshots in reading order, with table rows, inline links, and what’s on screen kept first.</li><li>Clickable elements found by cursor, label and icon, including controls with no ARIA role.</li><li>Aiming by label, with <code>near</code> and <code>nth</code> when a label repeats.</li><li>Clicks find an uncovered spot on their target, and coordinate clicks snap to the nearest control.</li><li>Drag by label or by offset, with a check that something actually moved.</li><li>Typing into date, time and dropdown fields from plain values.</li><li>Every action reports what changed on the page.</li></ul><h3>Agent loop</h3><ul><li>Retries with backoff for rate limits, provider errors, and dropped or stalled streams.</li><li>Recovery when a request is too long for the model’s context window.</li><li>A nudge when a reply is cut off or checklist items are still open, and a warning when the model repeats itself.</li></ul><h3>Tools</h3><ul><li>Follows tabs opened by the page, answers JavaScript dialogs, and times out stuck page calls.</li><li>Waits for network requests an action started.</li><li>Repairs malformed tool arguments and understands tool names other agents use.</li></ul></div>
+    </article>
+    <article class="release" id="v1.3.0">
+      <div><div class="v">1.3.0</div><time datetime="2026-10-20">October 20, 2026</time></div>
+      <div><h3>Site packs</h3><ul><li>New Google Docs pack: write, select, format, comment and read documents.</li><li>Formatted pasting of markdown and HTML into rich editors.</li></ul></div>
+    </article>
+    <article class="release" id="v1.1.0">
+      <div><div class="v">1.1.0</div><time datetime="2026-10-20">October 20, 2026</time></div>
+      <div><h3>First release</h3><ul><li>A browser agent in Chrome’s side panel, with a streaming OpenRouter client.</li><li>Tools for tabs, navigation, reading pages, clicking and typing.</li></ul></div>
+    </article>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TuffAgent compose</title>
+<!-- Lays out one branding image from the query string. Rendered by render.mjs:
+       ?shot=1..5&theme=dark|light     store screenshot, 1280×800
+       ?scene=1..5&theme=…             the browser window alone (website)
+       ?tile=small|marquee|og|github   promo tiles and social cards
+       ?icon=store|mark|mark-inverse|touch|wordmark
+     The web pages inside the window (Lumen Supply, Nestly, Wayfare) are made up. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=block" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a; --fg: #ececec; --fg-2: #9a9a9a; --fg-3: #5c5c5c;
+  --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.14); --ascii: rgba(255,255,255,.16);
+  --chrome: #151515; --tab: #0e0e0e; --url: #0b0b0b; --win-line: rgba(255,255,255,.12);
+  --pg: #101010; --pg-fg: #e9e9e9; --pg-2: #8f8f8f; --pg-3: #5f5f5f; --pg-line: rgba(255,255,255,.08); --pg-card: #151515;
+  --pg-btn: #ececec; --pg-btn-fg: #0a0a0a; --pg-soft: #1b1b1b;
+  --shadow: 0 40px 90px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.06);
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+:root[data-theme="light"] {
+  --bg: #f1f1ef; --fg: #0c0c0c; --fg-2: #5a5a5a; --fg-3: #9a9a9a;
+  --line: rgba(0,0,0,.08); --line-2: rgba(0,0,0,.14); --ascii: rgba(0,0,0,.13);
+  --chrome: #e6e6e3; --tab: #f7f7f5; --url: #ffffff; --win-line: rgba(0,0,0,.12);
+  --pg: #ffffff; --pg-fg: #121212; --pg-2: #666; --pg-3: #9b9b9b; --pg-line: rgba(0,0,0,.08); --pg-card: #fafaf9;
+  --pg-btn: #0f0f0f; --pg-btn-fg: #fff; --pg-soft: #f2f2f0;
+  --shadow: 0 40px 90px -36px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.05);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { width: var(--w); height: var(--h); overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); -webkit-font-smoothing: antialiased; position: relative; }
+body.clear { background: transparent; }
+
+/* ASCII field, like the panel's backdrop */
+.ascii { position: absolute; inset: 0; margin: 0; font: 11px/14px var(--mono); color: var(--ascii); white-space: pre; overflow: hidden; pointer-events: none; }
+.ascii.fade { -webkit-mask-image: radial-gradient(120% 90% at 85% 40%, #000 30%, transparent 75%); mask-image: radial-gradient(120% 90% at 85% 40%, #000 30%, transparent 75%); }
+
+/* Brand */
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand svg { width: var(--ms, 22px); height: var(--ms, 22px); }
+.brand .word { font: 700 var(--ws, 13px) var(--mono); letter-spacing: .2em; text-transform: uppercase; }
+.brand .ver { font: 500 var(--ws, 13px) var(--mono); letter-spacing: .1em; color: var(--fg-3); padding-left: 12px; border-left: 1px solid var(--line-2); }
+h1 { margin: 0; font-weight: 700; letter-spacing: -.04em; line-height: 1.02; font-optical-sizing: auto; }
+.chips { display: flex; gap: 10px; }
+.chip { font: 500 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; padding: 9px 13px; border: 1px solid var(--line-2); color: var(--fg-2); background: var(--bg); }
+
+/* Store screenshot */
+.cap { position: absolute; left: 64px; top: 50px; right: 64px; display: flex; justify-content: space-between; align-items: flex-start; }
+.cap h2 { margin: 0; font-size: 31px; font-weight: 650; letter-spacing: -.028em; line-height: 1.15; }
+.cap p { margin: 10px 0 0; font-size: 17px; line-height: 1.45; color: var(--fg-2); max-width: 760px; }
+.cap .brand { margin-top: 8px; --ms: 18px; --ws: 11px; gap: 10px; }
+
+/* Browser window */
+.win { position: absolute; width: 1152px; height: 640px; border-radius: 10px; overflow: hidden; background: var(--chrome); box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.win.flat-bottom { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.scene .win { position: static; box-shadow: none; outline: 1px solid var(--win-line); outline-offset: -1px; }
+.tabs { height: 38px; display: flex; align-items: flex-end; gap: 2px; padding: 0 10px 0 12px; flex: none; }
+.lights { display: flex; gap: 7px; align-self: center; margin-right: 14px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; background: var(--line-2); }
+.tab { height: 30px; width: 196px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12px; color: var(--fg-2); border-radius: 7px 7px 0 0; position: relative; white-space: nowrap; overflow: hidden; }
+.tab span { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.tab.on { background: var(--tab); color: var(--fg); }
+.tab:not(.on):not(:last-child)::after { content: ''; position: absolute; right: -1px; top: 8px; bottom: 8px; width: 1px; background: var(--line-2); }
+.tab .x { width: 8px; height: 8px; opacity: .5; flex: none; }
+.fav { width: 14px; height: 14px; border-radius: 3px; flex: none; display: grid; place-items: center; font: normal 700 9px/1 var(--font); background: var(--fg-3); color: var(--bg); }
+.tab.g { border-bottom: 2px solid var(--gc); }
+.group { height: 22px; align-self: center; margin: 0 4px 0 8px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: #0b0b0b; background: var(--gc); display: flex; align-items: center; white-space: nowrap; }
+.newtab { align-self: center; margin-left: 6px; color: var(--fg-3); font-size: 16px; }
+.bar { height: 40px; background: var(--tab); display: flex; align-items: center; gap: 14px; padding: 0 12px; border-bottom: 1px solid var(--win-line); flex: none; }
+.bar svg { width: 16px; height: 16px; color: var(--fg-2); flex: none; }
+.url { flex: 1; height: 28px; border-radius: 14px; background: var(--url); border: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 12.5px; color: var(--fg-2); }
+.url b { color: var(--fg); font-weight: 500; }
+.ext { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: var(--line); }
+.ext svg { width: 15px; height: 15px; }
+.me { width: 22px; height: 22px; border-radius: 50%; background: var(--fg-3); }
+.body { flex: 1; display: flex; min-height: 0; }
+.page { flex: 1; position: relative; background: var(--pg); color: var(--pg-fg); overflow: hidden; font-size: 13px; }
+.side { width: 380px; flex: none; border-left: 1px solid var(--win-line); background: var(--bg); overflow: hidden; }
+.side img { display: block; width: 380px; }
+
+/* The agent's on-page overlay (same as content.js) */
+.frame { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(10,10,10,.9), inset 0 0 0 3px rgba(255,255,255,.75), inset 0 0 50px 3px rgba(10,10,10,.2); z-index: 5; }
+.pill { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px 0 9px; z-index: 6;
+  font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #ececec; background: rgba(10,10,10,.92);
+  border: 1px solid rgba(255,255,255,.13); border-radius: 3px; box-shadow: 0 10px 30px -8px rgba(0,0,0,.45); white-space: nowrap; }
+.pill svg { width: 14px; height: 14px; }
+.pill .sep { width: 1px; height: 12px; background: rgba(255,255,255,.18); }
+.pill .label { color: #9a9a9a; font: 500 12px/1 var(--font); letter-spacing: 0; text-transform: none; }
+.pill .dot { width: 5px; height: 5px; background: #ececec; }
+.cursor { position: absolute; width: 24px; height: 24px; z-index: 7; filter: drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
+.ripple { position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; z-index: 6; border: 2px solid rgba(10,10,10,.8); box-shadow: 0 0 0 1px rgba(255,255,255,.75), inset 0 0 0 1px rgba(255,255,255,.75); opacity: .55; }
+
+/* Page: Lumen Supply */
+.shop-h { height: 58px; display: flex; align-items: center; gap: 22px; padding: 0 24px; border-bottom: 1px solid var(--pg-line); }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
+.logo i { width: 18px; height: 18px; border-radius: 50%; border: 4px solid var(--pg-fg); }
+.search { flex: 1; height: 34px; border-radius: 6px; border: 1px solid var(--pg-line); background: var(--pg-soft); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--pg-fg); }
+.search svg { width: 14px; height: 14px; color: var(--pg-2); }
+.nav { display: flex; gap: 18px; color: var(--pg-2); font-size: 12.5px; white-space: nowrap; }
+.shop-main { display: flex; gap: 24px; padding: 18px 24px; }
+.filters { width: 128px; flex: none; font-size: 12px; color: var(--pg-2); }
+.filters h4 { margin: 4px 0 8px; font-size: 11px; font-weight: 600; color: var(--pg-fg); }
+.filters label { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.filters label i { width: 12px; height: 12px; border: 1px solid var(--pg-3); border-radius: 3px; flex: none; }
+.filters label.on i { background: var(--pg-fg); border-color: var(--pg-fg); }
+.filters hr { border: 0; border-top: 1px solid var(--pg-line); margin: 12px 0; }
+.results { flex: 1; }
+.rhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+.rhead h3 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.rhead small { display: block; color: var(--pg-2); font-size: 12px; margin-top: 3px; font-weight: 400; }
+.sort { font-size: 12px; border: 1px solid var(--pg-line); border-radius: 6px; padding: 7px 10px; background: var(--pg-card); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.card { border: 1px solid var(--pg-line); border-radius: 8px; background: var(--pg-card); padding: 12px; }
+.mon { height: 118px; display: grid; place-items: center; background: var(--pg-soft); border-radius: 6px; margin-bottom: 11px; position: relative; }
+.mon .scr { width: 116px; height: 70px; border-radius: 3px; border: 4px solid #1a1a1a; background: linear-gradient(135deg, var(--a), var(--b)); position: relative; top: -8px; }
+.mon .neck { position: absolute; bottom: 18px; width: 10px; height: 16px; background: #2a2a2a; }
+.mon .foot { position: absolute; bottom: 14px; width: 46px; height: 5px; border-radius: 2px; background: #2a2a2a; }
+.card h5 { margin: 0; font-size: 13px; font-weight: 600; }
+.card .spec { color: var(--pg-2); font-size: 11.5px; margin: 3px 0 6px; }
+.stars { font-size: 11.5px; color: var(--pg-2); display: flex; gap: 6px; align-items: center; }
+.stars b { color: var(--pg-fg); letter-spacing: 1px; font-weight: 500; }
+.price { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.price strong { font-size: 16px; font-weight: 650; }
+.btn { font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 6px; background: var(--pg-btn); color: var(--pg-btn-fg); }
+.btn.ghost { background: transparent; color: var(--pg-fg); border: 1px solid var(--pg-line); }
+
+/* Page: Nestly listing */
+.nest-h { height: 58px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--pg-line); }
+.nest-h .logo { font-size: 17px; letter-spacing: -.03em; }
+.nest-h .logo i { border-radius: 4px 4px 9px 9px; border-width: 3px; }
+.where { height: 34px; border-radius: 17px; border: 1px solid var(--pg-line); display: flex; align-items: center; padding: 0 6px 0 16px; gap: 12px; font-size: 12px; color: var(--pg-2); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.where b { color: var(--pg-fg); font-weight: 600; }
+.where i { width: 24px; height: 24px; border-radius: 50%; background: var(--pg-btn); }
+.nest { padding: 18px 24px; }
+.nest h3 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.015em; }
+.nest .sub { color: var(--pg-2); font-size: 12px; margin: 4px 0 14px; }
+.photos { display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 112px 112px; gap: 6px; border-radius: 10px; overflow: hidden; }
+.ph { position: relative; overflow: hidden; }
+.ph:first-child { grid-row: span 2; }
+.p1 { background: linear-gradient(180deg, #c9d3d6 0 38%, #b98f6c 38% 100%); }
+.p1::before { content: ''; position: absolute; left: 14%; top: 18%; width: 30%; height: 60%; border-radius: 60px 60px 0 0; background: linear-gradient(180deg, #a9c1cc, #e9e1d2); box-shadow: 0 0 0 7px #efe7da; }
+.p1::after { content: ''; position: absolute; right: 8%; bottom: 0; width: 44%; height: 30%; background: #6f5a48; border-radius: 6px 6px 0 0; }
+.p2 { background: linear-gradient(160deg, #e7ddcf, #c3ab8d); }
+.p2::after { content: ''; position: absolute; left: 18%; right: 18%; bottom: 0; height: 42%; background: #f4efe7; border-radius: 4px 4px 0 0; box-shadow: 0 -10px 0 -4px #8f6e52; }
+.p3 { background: linear-gradient(200deg, #9fb6c4, #dfe6e8 60%, #c9b59a 60%); }
+.p4 { background: linear-gradient(180deg, #d8cbbb, #a68a6b); }
+.p4::after { content: ''; position: absolute; left: 20%; top: 22%; width: 26%; height: 50%; background: #efe6d8; border-radius: 3px; box-shadow: 46px 0 0 #efe6d8; }
+.p5 { background: linear-gradient(140deg, #bfa281, #e8dccb); }
+.p5::after { content: ''; position: absolute; left: 50%; top: 20%; width: 36px; height: 36px; margin-left: -18px; border-radius: 50%; background: #f7f1e6; box-shadow: 0 30px 0 6px #7a5f48; }
+.nest-row { display: flex; gap: 24px; margin-top: 16px; }
+.nest-info { flex: 1; font-size: 12.5px; color: var(--pg-2); }
+.nest-info b { display: block; color: var(--pg-fg); font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.amen { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; margin-top: 12px; }
+.book { width: 230px; border: 1px solid var(--pg-line); border-radius: 10px; padding: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.08); background: var(--pg-card); }
+.book .n { font-size: 17px; font-weight: 650; }
+.book .n small { font-size: 12px; font-weight: 400; color: var(--pg-2); }
+.dates { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--pg-line); border-radius: 6px; margin: 10px 0; font-size: 11px; }
+.dates div { padding: 7px 9px; }
+.dates div + div { border-left: 1px solid var(--pg-line); }
+.dates span { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; color: var(--pg-fg); }
+.book .btn { display: block; text-align: center; }
+
+/* Page: Wayfare article */
+.art-h { height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 36px; border-bottom: 1px solid var(--pg-line); }
+.art-h .logo { font-family: Georgia, "Times New Roman", serif; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.art-h .logo i { display: none; }
+.art { max-width: 560px; margin: 0 auto; padding: 26px 0; }
+.kicker { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pg-2); }
+.art h3 { font-family: Georgia, "Times New Roman", serif; font-size: 30px; line-height: 1.12; font-weight: 700; margin: 8px 0 8px; letter-spacing: -.01em; }
+.by { font-size: 12px; color: var(--pg-2); margin-bottom: 16px; }
+.hero-img { height: 150px; border-radius: 6px; background: linear-gradient(180deg, #b9cdd8 0 45%, #d9b48f 45% 62%, #c4876a 62% 70%, #e4d6c2 70%); position: relative; overflow: hidden; margin-bottom: 16px; }
+.hero-img::before { content: ''; position: absolute; left: 8%; bottom: 30%; width: 84%; height: 30%; background: repeating-linear-gradient(90deg, #f1e7d8 0 34px, #e3b48e 34px 56px, #f6efe4 56px 88px, #c98e6d 88px 104px); clip-path: polygon(0 40%, 6% 20%, 14% 30%, 22% 10%, 30% 28%, 40% 0, 50% 22%, 60% 8%, 70% 26%, 80% 4%, 90% 24%, 100% 14%, 100% 100%, 0 100%); }
+.art p { font-family: Georgia, "Times New Roman", serif; font-size: 15px; line-height: 1.65; margin: 0 0 12px; color: var(--pg-fg); opacity: .9; }
+
+/* Tiles */
+.tile { position: absolute; inset: 0; }
+.panel-shot { position: absolute; border-radius: 6px; overflow: hidden; box-shadow: var(--shadow); outline: 1px solid var(--win-line); outline-offset: -1px; background: var(--bg); }
+.panel-shot img { display: block; width: 100%; }
+
+/* Icons */
+.icon { position: absolute; inset: 0; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 24 24">
+      <rect x="1" y="1" width="22" height="22" rx="2.5" style="fill: var(--mk-bg, var(--fg))"/>
+      <!-- Same T as the panel's mark, drawn as fills so the stem doesn't poke above the bar at large sizes. -->
+      <path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z" style="fill: var(--mk-fg, var(--bg))"/>
+    </symbol>
+  </defs>
+</svg>
+<script>
+const q = new URLSearchParams(location.search);
+const theme = q.get('theme') || 'dark';
+document.documentElement.dataset.theme = theme;
+document.body.style.setProperty('--w', (q.get('w') || 1280) + 'px');
+document.body.style.setProperty('--h', (q.get('h') || 800) + 'px');
+const W = +(q.get('w') || 1280), H = +(q.get('h') || 800);
+
+const mark = (cls = '') => `<svg class="${cls}" viewBox="0 0 24 24"><use href="#mark"/></svg>`;
+const brand = (ver) => `<div class="brand">${mark()}<span class="word">TuffAgent</span>${ver ? `<span class="ver">${ver}</span>` : ''}</div>`;
+const panelSrc = (name) => `/branding/panel/${name}-${theme}.png`;
+
+// Deterministic value noise for the ASCII field.
+function ascii(cols, rows, seed = 7, density = 1) {
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const G = 9, gx = Math.ceil(cols / G) + 2, gy = Math.ceil(rows / 4) + 2;
+  const grid = Array.from({ length: gx * gy }, rnd);
+  const at = (x, y) => grid[y * gx + x];
+  const sm = (t) => t * t * (3 - 2 * t);
+  const noise = (x, y) => {
+    const fx = x / G, fy = y / 4, ix = Math.floor(fx), iy = Math.floor(fy), tx = sm(fx - ix), ty = sm(fy - iy);
+    const a = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * tx;
+    const b = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * tx;
+    return a + (b - a) * ty;
+  };
+  let out = '';
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const n = noise(x, y) * density;
+      out += n > .8 ? '+' : n > .68 ? '=' : n > .54 ? '-' : n > .47 ? '·' : ' ';
+    }
+    out += '\n';
+  }
+  return out;
+}
+const field = (cls = '', seed, density) => `<pre class="ascii ${cls}">${ascii(Math.ceil(W / 6.6) + 2, Math.ceil(H / 14) + 1, seed, density)}</pre>`;
+
+// ── Browser window ──
+const I = {
+  back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3 5 8l5 5"/></svg>',
+  fwd: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.45"><path d="m6 3 5 5-5 5"/></svg>',
+  reload: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"/></svg>',
+  lock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="width:12px;height:12px"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+  x: '<svg class="x" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.3"><path d="m1 1 6 6M7 1 1 7"/></svg>',
+  search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>',
+  cursor: '<svg viewBox="0 0 24 24"><path d="M4 2.5l15 8.2-6.6 1.6-3.1 6.3z" fill="#0a0a0a" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+  pillMark: '<svg viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="2.5" fill="#ececec"/><path d="M6.5 7.5h11M12.9 7.5 10.4 18" stroke="#0a0a0a" stroke-width="2.6" stroke-linecap="square" fill="none"/></svg>',
+};
+const fav = (l) => `<i class="fav">${l}</i>`;
+const tab = (l, t, on, g) => `<div class="tab${on ? ' on' : ''}${g ? ' g' : ''}" ${g ? `style="--gc:${g}"` : ''}>${fav(l)}<span>${t}</span>${on ? I.x : ''}</div>`;
+
+function win({ tabs, url, page, panel, overlay }) {
+  return `<div class="win">
+    <div class="tabs"><div class="lights"><i></i><i></i><i></i></div>${tabs}<span class="newtab">+</span></div>
+    <div class="bar">${I.back}${I.fwd}${I.reload}<div class="url">${I.lock}<span>${url}</span></div><span class="ext">${mark()}</span><span class="me"></span></div>
+    <div class="body"><div class="page">${page}${overlay ? `<div class="frame"></div><div class="pill">${I.pillMark}<span>TuffAgent</span><i class="sep"></i><span class="label">${overlay}</span><span class="dot"></span></div>` : ''}</div>
+    <div class="side"><img src="${panelSrc(panel)}" alt=""></div></div>
+  </div>`;
+}
+
+// ── Pages (made up) ──
+const monitor = (a, b) => `<div class="mon"><div class="scr" style="--a:${a};--b:${b}"></div><div class="neck"></div><div class="foot"></div></div>`;
+const product = (name, spec, stars, rating, count, price, a, b, id) => `<div class="card">${monitor(a, b)}<h5>${name}</h5><div class="spec">${spec}</div>
+  <div class="stars"><b>${stars}</b>${rating} (${count})</div><div class="price"><strong>${price}</strong><span class="btn" ${id ? `id="${id}"` : ''}>Add to cart</span></div></div>`;
+const SHOP = `<div class="shop-h"><div class="logo"><i></i>Lumen Supply</div><div class="search">${I.search}27 inch 4K</div><div class="nav"><span>Deals</span><span>Account</span><span>Cart (0)</span></div></div>
+  <div class="shop-main">
+    <div class="filters"><h4>Price</h4><label class="on"><i></i>Under $350</label><label><i></i>$350 – $600</label><hr><h4>Size</h4><label class="on"><i></i>27"</label><label><i></i>32"</label><hr><h4>Refresh rate</h4><label><i></i>60Hz</label><label><i></i>120Hz and up</label><hr><h4>Rating</h4><label><i></i>4 stars and up</label></div>
+    <div class="results"><div class="rhead"><h3>27 inch 4K monitors<small>24 results · 9 under $350</small></h3><span class="sort">Sort: Top rated ▾</span></div>
+      <div class="grid">
+        ${product('Arden 27 UHD', '27" · 3840×2160 · 120Hz', '★★★★★', '4.8', '1,204', '$289', '#8fa3b8', '#35485e', 'target')}
+        ${product('Pike P27K', '27" · 3840×2160 · 60Hz', '★★★★½', '4.6', '688', '$319', '#c0a58a', '#4e3c30')}
+        ${product('Vela 27Q Pro', '27" · 3840×2160 · 144Hz', '★★★★½', '4.5', '412', '$339', '#9fb39b', '#344632')}
+        ${product('Orrin 27 Studio', '27" · 3840×2160 · 60Hz', '★★★★½', '4.4', '903', '$279', '#b7a7c9', '#3f3550')}
+        ${product('Kite K27U', '27" · 3840×2160 · 60Hz', '★★★★', '4.2', '1,877', '$249', '#a9c1c9', '#2f4950')}
+        ${product('Arden 27 UHD-C', '27" · 3840×2160 · 120Hz', '★★★★', '4.1', '96', '$349', '#c9b48f', '#4f4128')}
+      </div>
+    </div>
+  </div>`;
+
+const NEST = `<div class="nest-h"><div class="logo"><i></i>nestly</div><div class="where"><b>Lisbon</b>Nov 21 – 24 · 2 guests<i></i></div><span style="font-size:12px;color:var(--pg-2)">Sign in</span></div>
+  <div class="nest"><h3>Loft in Alfama with river view</h3><div class="sub">★ 4.91 · 212 reviews · Alfama, Lisbon</div>
+    <div class="photos"><div class="ph p1"></div><div class="ph p2"></div><div class="ph p3"></div><div class="ph p4"></div><div class="ph p5"></div></div>
+    <div class="nest-row"><div class="nest-info"><b>Entire loft · 1 bedroom · 1 bath</b>Top floor of a restored 1900s building, six minutes’ walk from Santa Apolónia station.
+      <div class="amen"><span>Washing machine</span><span>River view</span><span>Fast wifi · 300 Mbps</span><span>Self check-in</span></div></div>
+      <div class="book"><div class="n">€142 <small>night</small></div><div class="dates"><div><span>CHECK-IN</span>Nov 21</div><div><span>CHECKOUT</span>Nov 24</div></div><span class="btn">Reserve</span></div></div>
+  </div>`;
+
+const ART = `<div class="art-h"><div class="logo"><i></i>Wayfare</div><div class="nav"><span>Cities</span><span>Food</span><span>Guides</span><span>Subscribe</span></div></div>
+  <div class="art"><div class="kicker">City guides · Portugal</div><h3>A slow weekend in Lisbon</h3><div class="by">By Inês Duarte · 9 min read</div>
+    <div class="hero-img"></div>
+    <p>Start at the bottom of the hill. Rua Augusta runs from the river up through the Baixa, and on a Saturday morning it is mostly locals buying bread and the first tram riders heading toward Graça.</p>
+    <p>From there, the climb into Alfama is short but steep. Take it slowly: the best viewpoints are the small ones between houses, not the famous terraces.</p></div>`;
+
+const GROUPS = { blue: '#8ab4f8', green: '#81c995', yellow: '#fdd663', grey: '#bdc1c6' };
+
+const SCENES = {
+  1: { // live run on a shop
+    tabs: tab('L', '27 inch 4K monitors · Lumen Supply', true) + tab('W', 'A slow weekend in Lisbon') + tab('M', 'Inbox'),
+    url: '<b>lumen.supply</b>/s?q=27+inch+4k&sort=rating', page: SHOP, panel: 'live', overlay: 'Clicking “Add to cart”', cursorAt: '#target',
+  },
+  2: { // finished comparison across tabs
+    tabs: tab('W', 'A slow weekend in Lisbon') + tab('N', 'Loft in Alfama with river view', true) + tab('N', 'Flat in Príncipe Real') + tab('N', 'Studio in Graça'),
+    url: '<b>nestly.co</b>/l/48213?checkin=2026-11-21', page: NEST, panel: 'rentals',
+  },
+  3: { // tabs grouped
+    tabs: `<span class="group" style="--gc:${GROUPS.blue}">Lisbon trip</span>` + tab('W', 'A slow weekend in Lisbon', true, GROUPS.blue) + tab('N', 'Loft in Alfama', false, GROUPS.blue)
+      + `<span class="group" style="--gc:${GROUPS.green}">Monitors</span><span class="group" style="--gc:${GROUPS.yellow}">Taxes</span>` + tab('M', 'Inbox') ,
+    url: '<b>wayfare.travel</b>/lisbon/slow-weekend', page: ART, panel: 'tabs',
+  },
+  4: { tabs: tab('W', 'A slow weekend in Lisbon', true) + tab('N', 'Loft in Alfama with river view') + tab('M', 'Inbox'), url: '<b>wayfare.travel</b>/lisbon/slow-weekend', page: ART, panel: 'picker' },
+  5: { tabs: tab('N', 'Loft in Alfama with river view', true) + tab('W', 'A slow weekend in Lisbon') + tab('M', 'Inbox'), url: '<b>nestly.co</b>/l/48213?checkin=2026-11-21', page: NEST, panel: 'settings' },
+};
+
+const CAPTIONS = {
+  1: ['Describe a task, and TuffAgent does it in your browser.', 'It reads the page and clicks and types the way you would. A frame shows which tab it’s working in, and Esc stops it.'],
+  2: ['See every step it took, how long it took and what it cost.', 'Answers come back in the sidebar. Each chat keeps a full log that you can reopen or export.'],
+  3: ['Your tabs, bookmarks, history and downloads are tools too.', 'Ask it to sort your tabs into groups, find a page you read last week, or check that a file finished downloading.'],
+  4: ['Use Claude, GPT, Gemini or any of 300+ models.', 'Connect one OpenRouter key and switch models from the composer whenever you like.'],
+  5: ['No account, no servers, no analytics.', 'Your key, settings and chats stay in this browser. Page content goes to the model you picked, only while a task is running.'],
+};
+
+function placeCursor(sc) {
+  if (!sc.cursorAt) return;
+  const page = document.querySelector('.page'), t = document.querySelector(sc.cursorAt);
+  if (!page || !t) return;
+  const p = page.getBoundingClientRect(), r = t.getBoundingClientRect();
+  const x = r.left - p.left + r.width * .55, y = r.top - p.top + r.height * .6;
+  page.insertAdjacentHTML('beforeend', `<div class="ripple" style="left:${x}px;top:${y}px"></div><div class="cursor" style="left:${x - 5}px;top:${y - 3}px">${I.cursor}</div>`);
+}
+
+// ── Build ──
+const shot = q.get('shot'), scene = q.get('scene'), tile = q.get('tile'), icon = q.get('icon');
+let html = '';
+if (shot) {
+  const sc = SCENES[shot], [h, p] = CAPTIONS[shot];
+  html = field('', 3 + +shot, .92) + `<div class="cap"><div><h2>${h}</h2><p>${p}</p></div>${brand()}</div>`
+    + win(sc).replace('class="win"', 'class="win flat-bottom" style="left:64px;top:160px"');
+  document.body.innerHTML += html;
+  placeCursor(sc);
+} else if (scene) {
+  const sc = SCENES[scene];
+  document.body.classList.add('clear', 'scene');
+  document.body.innerHTML += win(sc);
+  placeCursor(sc);
+} else if (tile === 'small') {
+  html = field('fade', 11, 1) + `<div class="tile">
+    <div style="position:absolute;left:28px;top:28px">${brand().replace('class="brand"', 'class="brand" style="--ms:20px;--ws:11px;gap:10px"')}</div>
+    <h1 style="position:absolute;left:28px;top:84px;font-size:30px">A browser agent<br>in your sidebar.</h1>
+    <div style="position:absolute;left:28px;bottom:28px;font:600 10px var(--mono);letter-spacing:.16em;color:var(--fg-2);text-transform:uppercase">Chrome · Firefox</div>
+    <div class="panel-shot" style="left:284px;top:32px;width:220px">${`<img src="${panelSrc('live')}" alt="">`}</div>
+  </div>`;
+  document.body.innerHTML += html;
+} else if (tile === 'marquee' || tile === 'og' || tile === 'github') {
+  const L = {
+    marquee: { pad: 88, top: 92, h1: 70, sub: 21, subW: 520, p1: [820, 64, 330], p2: [1040, 150, 330] },
+    og: { pad: 72, top: 78, h1: 64, sub: 20, subW: 470, p1: [690, 62, 300], p2: [890, 140, 300] },
+    github: { pad: 80, top: 80, h1: 66, sub: 20, subW: 500, p1: [740, 60, 310], p2: [950, 140, 310] },
+  }[tile];
+  html = field('fade', 5, 1) + `<div class="tile">
+    <div style="position:absolute;left:${L.pad}px;top:0;bottom:0;width:${L.subW + 70}px;display:flex;flex-direction:column;justify-content:center">
+      ${brand('v1.6').replace('class="brand"', 'class="brand" style="--ms:26px;--ws:14px"')}
+      <h1 style="font-size:${L.h1}px;margin-top:${L.h1 * .5}px">A browser agent in your sidebar.</h1>
+      <p style="width:${L.subW}px;margin:${L.sub * 1.1}px 0 0;font-size:${L.sub}px;line-height:1.45;color:var(--fg-2)">Reads pages, clicks, types and works your tabs in Chrome and Firefox. Bring any model through OpenRouter.</p>
+      <div class="chips" style="margin-top:${L.sub * 1.6}px"><span class="chip">Chrome</span><span class="chip">Firefox</span><span class="chip">300+ models</span></div>
+    </div>
+    <div class="panel-shot" style="left:${L.p1[0]}px;top:${L.p1[1]}px;width:${L.p1[2]}px"><img src="${panelSrc('shop-tall')}" alt=""></div>
+    <div class="panel-shot" style="left:${L.p2[0]}px;top:${L.p2[1]}px;width:${L.p2[2]}px"><img src="${panelSrc('live-tall')}" alt=""></div>
+  </div>`;
+  document.body.innerHTML += html;
+} else if (icon) {
+  document.body.classList.add('clear');
+  const S = Math.min(W, H);
+  if (icon === 'store') {
+    // Chrome Web Store: 96×96 artwork centred in 128×128, transparent padding.
+    document.body.innerHTML += `<div class="icon" style="--mk-bg:#0a0a0a;--mk-fg:#f1f1ef">${mark().replace('<svg', '<svg style="width:96px;height:96px;filter:drop-shadow(0 0 1px rgba(255,255,255,.35))"')}</div>`;
+  } else if (icon === 'mark' || icon === 'mark-inverse') {
+    const inv = icon === 'mark-inverse';
+    document.body.innerHTML += `<div class="icon" style="--mk-bg:${inv ? '#f1f1ef' : '#0a0a0a'};--mk-fg:${inv ? '#0a0a0a' : '#f1f1ef'}">${mark().replace('<svg', `<svg style="width:${S}px;height:${S}px"`)}</div>`;
+  } else if (icon === 'touch') {
+    // iOS rounds the corners itself, so this one is a full square.
+    document.body.classList.remove('clear');
+    document.body.style.background = '#0a0a0a';
+    document.body.innerHTML += `<svg viewBox="0 0 24 24" style="position:absolute;inset:0;width:${S}px;height:${S}px"><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z" fill="#f1f1ef"/></svg>`;
+  } else if (icon === 'wordmark') {
+    // Ink on transparent for light backgrounds (theme=light), paper for dark ones.
+    const ink = theme === 'light';
+    document.body.innerHTML += `<div class="icon" style="--fg:${ink ? '#0a0a0a' : '#f1f1ef'};--bg:${ink ? '#f1f1ef' : '#0a0a0a'}">${brand().replace('class="brand"', `class="brand" style="--ms:96px;--ws:62px;gap:40px;color:var(--fg)"`)}</div>`;
+  }
+}
+</script>
+</body>
+</html>

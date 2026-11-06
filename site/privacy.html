@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · TuffAgent</title>
+<meta name="description" content="TuffAgent has no servers, accounts or analytics. What it stores on your device, what it sends to OpenRouter while a task runs, and why it needs each permission.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="Privacy policy · TuffAgent">
+<meta property="og:description" content="TuffAgent has no servers, accounts or analytics. What it stores on your device, what it sends to OpenRouter while a task runs, and why it needs each permission.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="91" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Privacy policy</p>
+    <h1 class="rise d1">Privacy policy</h1>
+    <p class="lede rise d2">What TuffAgent handles, where it goes, and what stays on your device.</p>
+    <p class="updated rise d3">Last updated November 4, 2026</p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap with-aside">
+    <nav class="aside" aria-label="Sections"><span class="k">On this page</span><a href="#short">The short version</a><a href="#stored">Stored on your device</a><a href="#sent">What is sent, and to whom</a><a href="#exports">Exports</a><a href="#permissions">Permissions</a><a href="#children">Children</a><a href="#changes">Changes</a><a href="#contact">Contact</a></nav>
+    <div class="prose">
+      <div class="summary" id="short">
+        <h2>The short version</h2>
+        <ul>
+          <li>TuffAgent has no servers, accounts, analytics or tracking. The developer never receives your data.</li>
+          <li>Your OpenRouter key, settings and chats are stored only in your browser.</li>
+          <li>While the agent works on a task you gave it, the content it needs (your request, page text, screenshots, tab titles and URLs) is sent to OpenRouter, which passes it to the model provider you picked.</li>
+          <li>Nothing is sold, shared for advertising, or used for anything other than doing the task you asked for.</li>
+        </ul>
+      </div>
+
+      <p>TuffAgent is a browser extension that carries out tasks in your browser using an AI model you choose through OpenRouter. This policy explains what data it handles, where that data goes, and what stays on your device.</p>
+
+      <h2 id="stored">What is stored on your device</h2>
+      <p>All of this lives in the extension’s local storage and never leaves your browser unless you export it.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Data</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Your OpenRouter API key</td><td>To call the model you chose</td></tr>
+          <tr><td>Settings</td><td>To remember your preferences: model, theme, reasoning effort, custom instructions and so on</td></tr>
+          <tr><td>Chat history</td><td>Your messages, the agent’s replies, tool calls and results, timings, token counts and cost, so you can reopen or export a chat</td></tr>
+          <tr><td>Your last 50 prompts</td><td>So <kbd>↑</kbd> in the composer can bring them back</td></tr>
+          <tr><td>A list of OpenRouter models</td><td>So the model picker opens instantly</td></tr>
+        </tbody>
+      </table></div>
+      <p>You can delete chats one at a time from <strong>History</strong>, or all at once from <strong>Settings › Chat history › Delete all</strong>. Disconnecting your key in Settings removes it. Removing the extension deletes everything it stored.</p>
+
+      <h2 id="sent">What is sent, and to whom</h2>
+      <h3>OpenRouter</h3>
+      <p>When you send a task, TuffAgent sends OpenRouter (openrouter.ai):</p>
+      <ul>
+        <li>your message and the conversation so far;</li>
+        <li>information the agent collects to do the task: the text and structure of pages it reads, screenshots of the visible tab when the model asks for one, the titles and URLs of your open tabs, and results from your bookmarks, history or downloads when the task calls for them;</li>
+        <li>your custom instructions, if you set any.</li>
+      </ul>
+      <p>OpenRouter forwards the request to the provider of the model you selected, for example Anthropic, OpenAI or Google. Their handling of that data is covered by <a href="https://openrouter.ai/privacy">OpenRouter’s privacy policy</a> and the provider’s own terms. In your OpenRouter account settings you can control which providers are used, and whether they may store or train on prompts.</p>
+      <p>TuffAgent only sends this while it is working on a task you started. It does not read or send anything in the background. It also asks OpenRouter for the list of available models, and checks your key when you connect it.</p>
+      <h3>Icon stylesheet</h3>
+      <p>The side panel loads its icon font stylesheet from <code>beckettclarke.ca</code>. That request carries nothing about you or your tasks, but like any web request it shows that server your IP address and browser.</p>
+      <h3>Websites you ask it to use</h3>
+      <p>When the agent clicks, types or navigates on a site, that site sees those actions the same way it would see yours, signed in as you.</p>
+
+      <h2 id="exports">Exports</h2>
+      <p><strong>Export</strong> in History saves a JSON file of a chat’s messages, tool calls, results and timings to your computer. API keys are never included. What you do with that file is up to you.</p>
+
+      <h2 id="permissions">Permissions</h2>
+      <p>TuffAgent asks for broad permissions because it acts as a general browser assistant. It uses them only to carry out tasks you give it.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Permission</th><th>What it’s used for</th></tr></thead>
+        <tbody><tr><td>All sites</td><td>Read and act on whichever page you ask it to work on. It only touches pages while a task is running.</td></tr><tr><td>Tabs, tab groups</td><td>Read tab titles and URLs, and open, switch, close and group tabs when a task needs it.</td></tr><tr><td>Bookmarks</td><td>Search, read and create bookmarks when your task involves them.</td></tr><tr><td>History</td><td>Search your browsing history when your task asks for it, such as finding an article you read yesterday.</td></tr><tr><td>Downloads</td><td>List recent downloads, so it can confirm a file it was asked to download arrived, and only once.</td></tr><tr><td>Scripting</td><td>Add the code that reads pages and performs clicks, typing and scrolling.</td></tr><tr><td>Web navigation, web requests</td><td>Know when a page it opened has finished loading, and wait for requests an action started. Requests are only observed, never blocked or changed.</td></tr><tr><td>Debugger (Chrome only)</td><td>Send real mouse and keyboard input on sites that ignore simulated input, answer page dialogs, and drive Google Docs and Canva. Attached only to the tab the agent is working in, during a task, and can be turned off in Settings.</td></tr><tr><td>Storage</td><td>Keep your settings and chat history on your device.</td></tr><tr><td>Clipboard (Firefox, optional)</td><td>Paste formatted text into editors that ignore paste events. Requested once, with your first message.</td></tr></tbody>
+      </table></div>
+
+      <h2 id="children">Children</h2>
+      <p>TuffAgent is not directed at children under 13 and does not knowingly collect their data.</p>
+
+      <h2 id="changes">Changes</h2>
+      <p>If this policy changes, the new version will be published on this page with a new date.</p>
+
+      <h2 id="contact">Contact</h2>
+      <p>Questions or requests: open an issue at <a href="https://github.com/beckettclarke/TuffAgent/issues">github.com/beckettclarke/TuffAgent</a> or visit <a href="https://beckettclarke.ca">beckettclarke.ca</a>.</p>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

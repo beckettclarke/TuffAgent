@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ · TuffAgent</title>
+<meta name="description" content="Answers to common questions about TuffAgent: cost, privacy, supported browsers, permissions and troubleshooting.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="FAQ · TuffAgent">
+<meta property="og:description" content="Answers to common questions about TuffAgent: cost, privacy, supported browsers, permissions and troubleshooting.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html" aria-current="page">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="71" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">FAQ</p>
+    <h1 class="rise d1">Questions and answers</h1>
+    <p class="lede rise d2">Short answers about cost, privacy, browsers and the errors you might run into. If yours isn’t here, <a href="https://github.com/beckettclarke/TuffAgent/issues">ask on GitHub</a>.</p>
+    
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap" style="max-width:calc(880px + var(--gutter) * 2)">
+    <div class="faq-group">
+      <h2>Basics</h2>
+      <div class="faq">
+        <details><summary>What is TuffAgent?</summary><div class="a"><p>A browser extension that adds an AI agent to the Chrome side panel or the Firefox sidebar. You describe a task in plain words, and it carries it out by reading pages, clicking, typing and working with your tabs, bookmarks, history and downloads.</p></div></details>
+        <details><summary>How much does it cost?</summary><div class="a"><p>The extension is free. To use it you need an OpenRouter account, and you pay OpenRouter for the models you use. Some models on OpenRouter are free, with rate limits.</p><p>The line under the composer shows what the current chat has cost so far. <a href="models.html">More on models and cost</a>.</p></div></details>
+        <details><summary>Which model should I use?</summary><div class="a"><p>Start with the default, Claude Haiku 5.5, or one of the models in the picker’s <em>Fast &amp; capable</em> section. Move to a larger model if long tasks start going wrong. <a href="models.html">How to choose a model</a>.</p></div></details>
+        <details><summary>Do I need to make an account?</summary><div class="a"><p>Not with TuffAgent. The only account you need is with OpenRouter, for the API key.</p></div></details>
+        <details><summary>Can I see the source code?</summary><div class="a"><p>Yes, it’s on <a href="https://github.com/beckettclarke/TuffAgent">GitHub</a>. There’s no build step, so the files in the repository are exactly what the browser loads.</p></div></details>
+      </div>
+    </div>
+    <div class="faq-group">
+      <h2>Privacy and safety</h2>
+      <div class="faq">
+        <details><summary>What data leaves my browser?</summary><div class="a"><p>Only while a task you started is running: your request, the page content the agent reads, any screenshots it takes, the titles and URLs of your tabs, and bookmark, history or download results if the task needs them. That goes to OpenRouter and the model provider you picked.</p><p>Nothing goes to a TuffAgent server, because there isn’t one. <a href="privacy.html">Read the privacy policy</a>.</p></div></details>
+        <details><summary>Will it buy things or send messages without asking?</summary><div class="a"><p>It’s instructed to stop and ask before purchases, sending messages or emails, posting publicly, deleting data, or entering payment details or passwords, unless your request asked for exactly that.</p><p>That’s an instruction to the model rather than a hard block, so keep an eye on runs that involve your accounts or money.</p></div></details>
+        <details><summary>How do I stop it?</summary><div class="a"><p>Press <kbd>Esc</kbd>, or click the square stop button in the composer. Calls that hadn’t started yet are cancelled.</p></div></details>
+        <details><summary>Why does it need so many permissions?</summary><div class="a"><p>It’s a general-purpose agent, so it needs to read and act on whichever site you’re on, and use tabs, bookmarks, history and downloads when a task asks for them. It only uses them while carrying out a task you gave it. The <a href="privacy.html#permissions">privacy policy</a> lists what each permission is for.</p></div></details>
+        <details><summary>Does it work on sites where I’m signed in?</summary><div class="a"><p>Yes. It acts in your browser, as you. That’s what makes it useful, and it’s also why you should only give it tasks you’d be comfortable doing yourself.</p></div></details>
+      </div>
+    </div>
+    <div class="faq-group">
+      <h2>Browsers and setup</h2>
+      <div class="faq">
+        <details><summary>Which browsers does it work in?</summary><div class="a"><p>Chrome 121 or later, and Firefox 128 or later. Tab grouping in Firefox needs version 138.</p></div></details>
+        <details><summary>What doesn’t work in Firefox?</summary><div class="a"><p>Three things depend on Chrome’s DevTools protocol: trusted input, the Google Docs and Canva site packs, and running JavaScript on pages whose security policy blocks it. Everything else works. <a href="install.html#firefox">More detail</a>.</p></div></details>
+        <details><summary>Why does Chrome say TuffAgent started debugging this browser?</summary><div class="a"><p>That bar appears when <strong>Trusted input</strong> is on. It lets TuffAgent send real mouse and keyboard events, which some sites need. It’s attached only to the tab the agent is working in, and only during a task. Turn it off in Settings if you’d rather not see it.</p></div></details>
+        <details><summary>How do I change the keyboard shortcut?</summary><div class="a"><p>In Chrome, go to <code>chrome://extensions/shortcuts</code>. In Firefox, open <code>about:addons</code>, click the gear menu and choose <strong>Manage Extension Shortcuts</strong>.</p></div></details>
+      </div>
+    </div>
+    <div class="faq-group">
+      <h2>Troubleshooting</h2>
+      <div class="faq">
+        <details><summary>It says my key was rejected.</summary><div class="a"><p>OpenRouter didn’t accept the key; it may have been revoked or deleted. Click <strong>Update key</strong> and paste a new one.</p></div></details>
+        <details><summary>It says I’m out of credits.</summary><div class="a"><p>Your OpenRouter balance is too low for that model. Add credit on OpenRouter, or pick a free or cheaper model from the picker.</p></div></details>
+        <details><summary>It says the model is unavailable.</summary><div class="a"><p>Some models can’t take every request at every moment, or don’t support tool calling. Pick another model and try again.</p></div></details>
+        <details><summary>The icons in the panel are missing.</summary><div class="a"><p>The panel loads its icon font from <code>beckettclarke.ca</code>, so icons need an internet connection. Everything else works without them.</p></div></details>
+        <details><summary>How do I report a bug?</summary><div class="a"><p><a href="https://github.com/beckettclarke/TuffAgent/issues">Open an issue on GitHub</a>. If you can, attach the exported log for that chat (History › download icon). Logs never include your API key, but they do include page content, so look it over before you share it.</p></div></details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="field" data-field="33" data-lens></div>
+  <div class="wrap">
+    <h2>Add TuffAgent to your browser.</h2>
+    <p>Setup takes a couple of minutes: install the extension, paste an OpenRouter key, and open the sidebar with <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd>, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux.</p>
+    <div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div>
+    <p class="fine">Prefer to run it from source? <a href="install.html#source">See the manual install steps</a>.</p>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

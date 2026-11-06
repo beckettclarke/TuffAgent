@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site packs · TuffAgent</title>
+<meta name="description" content="TuffAgent’s site packs add tools made for Google Docs and Canva: formatted writing, styles, comments and exact layer edits that check their own results.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="Site packs · TuffAgent">
+<meta property="og:description" content="TuffAgent’s site packs add tools made for Google Docs and Canva: formatted writing, styles, comments and exact layer edits that check their own results.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html" aria-current="page">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="41" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Site packs</p>
+    <h1 class="rise d1">Extra tools for Google Docs and Canva</h1>
+    <p class="lede rise d2">Google Docs and Canva draw much of their interface on a canvas, which makes them hard to work with through ordinary clicks. On those sites TuffAgent loads tools made for the app, and each one checks its own result.</p>
+    <nav class="toc rise d3" aria-label="On this page"><a href="#how">How packs load</a><a href="#docs">Google Docs</a><a href="#canva">Canva</a><a href="#new">Writing a pack</a></nav>
+  </div>
+</section>
+
+<section class="sec" id="how">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">How packs load</p>
+        <h2>Only when you’re on the site.</h2>
+        <p>A pack’s tools are sent to the model once a matching page is open in the chat, so every other site gets the shorter, standard tool list. Once a pack is on, it stays on for the rest of that chat, which keeps the tool list and the provider’s prompt cache stable.</p>
+        <p>Before finishing a task that edited a document or design, the pack’s read tool runs one more time, and the model checks its summary against what’s actually there.</p>
+        <p class="note"><strong>Chrome only.</strong> Both packs work through the DevTools protocol, which Firefox doesn’t offer to extensions.</p>
+      </div>
+      <div class="stage"><div class="field" data-field="42" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-docs-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-docs-light.webp" alt="TuffAgent working in a Google Doc: reading it, rewriting it, setting the title, making a checklist, adding a comment and checking the result." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="docs">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">docs.google.com/document</p>
+      <h2>Google Docs</h2>
+      <p class="lede">Write and format whole documents in a few calls, leave comments, and read the result back with its real formatting.</p>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody><tr><td><code>gdocs_write</code></td><td>Pastes formatted text at the cursor, at the start or end, or before, after or over a piece of text. One call can hold a whole document: headings, lists, links, bold and italic, tables with merged and colored cells, images and page breaks.</td></tr><tr><td><code>gdocs_select</code></td><td>Finds text with the Docs find bar and selects it, or puts the cursor before or after it, or at either end of the document.</td></tr><tr><td><code>gdocs_format</code></td><td>Sets paragraph style, list type, bold, italic, underline, font, size, text color, highlight, alignment and links on a piece of text, all in one call. Fonts missing from the menu are added from More fonts.</td></tr><tr><td><code>gdocs_comment</code></td><td>Adds a comment to a piece of text, replies to a thread or resolves it, and checks each step on the comment card.</td></tr><tr><td><code>gdocs_mode</code></td><td>Switches between editing, suggesting and viewing.</td></tr><tr><td><code>gdocs_rename</code></td><td>Renames the document and checks that the new title took.</td></tr><tr><td><code>gdocs_equation</code></td><td>Inserts an equation and types it with real keystrokes, paced so the equation box doesn’t drop any.</td></tr><tr><td><code>gdocs_command</code></td><td>Runs any menu command by name through the Docs menu search, such as Merge cells or Page numbers. Only an exact match runs.</td></tr><tr><td><code>gdocs_read</code></td><td>Returns the document’s structure from Docs’ own export: page size and margins, each paragraph’s style and formatting, tables, images, links, header and footer, and open comments with replies.</td></tr></tbody></table></div>
+  </div>
+</section>
+
+<section class="sec" id="canva">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">canva.com</p>
+      <h2>Canva</h2>
+      <p class="lede">Read a design’s layers and set exact values, instead of dragging handles around the canvas. After a click in a design, the result says what got selected, for example <code>Selected: c2 shape 980×230 at (50, 113)</code>.</p>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody><tr><td><code>canva_read</code></td><td>Returns the design: title, size, background, and every element front to back with its text, size, position, fill, font and opacity, plus what’s selected.</td></tr><tr><td><code>canva_select</code></td><td>Picks an element by id, layer name or text through the Layers panel, never by clicking the canvas, and checks the selection.</td></tr><tr><td><code>canva_set</code></td><td>Sets width, height, position, fill and text color, opacity, font, size, weight and alignment, and reads each value back.</td></tr><tr><td><code>canva_arrange</code></td><td>Moves an element to the front or back, or one step either way, and reports the new order.</td></tr><tr><td><code>canva_add</code></td><td>Adds a text box, a square or a circle and returns the new element’s id.</td></tr><tr><td><code>canva_create</code> · <code>canva_rename</code> · <code>canva_download</code></td><td>Create a design, rename it, and download it. A download won’t run twice unless you ask, and the file is confirmed in Chrome’s downloads.</td></tr></tbody></table></div>
+  </div>
+</section>
+
+<section class="sec" id="new">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">For developers</p>
+        <h2>Writing a pack</h2>
+        <p>A pack is a single file in <code>sites/</code> that says which URLs it matches, adds its own tools and prompt notes, and picks an icon for each of its steps. Register it in <code>sites/index.js</code>. The Google Docs and Canva packs in the source are the best reference.</p>
+        <a class="more" href="https://github.com/beckettclarke/TuffAgent/tree/main/sites">Browse the packs on GitHub</a>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Field</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>match(url)</code></td><td>Whether the pack applies to a page</td></tr>
+          <tr><td><code>tools</code></td><td>Tool definitions sent to the model</td></tr>
+          <tr><td><code>prompt</code></td><td>Notes added to the system prompt</td></tr>
+          <tr><td><code>exec(name, args, api)</code></td><td>Runs the pack’s tools</td></tr>
+          <tr><td><code>finalCheck</code></td><td>A read tool run once before the final answer</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="field" data-field="33" data-lens></div>
+  <div class="wrap">
+    <h2>Add TuffAgent to your browser.</h2>
+    <p>Setup takes a couple of minutes: install the extension, paste an OpenRouter key, and open the sidebar with <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd>, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux.</p>
+    <div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div>
+    <p class="fine">Prefer to run it from source? <a href="install.html#source">See the manual install steps</a>.</p>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

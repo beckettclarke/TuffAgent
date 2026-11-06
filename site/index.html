@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuffAgent: a browser agent in your sidebar</title>
+<meta name="description" content="TuffAgent is a browser extension for Chrome and Firefox. Describe a task and it reads pages, clicks, types and works your tabs, using the AI model you choose through OpenRouter.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="TuffAgent: a browser agent in your sidebar">
+<meta property="og:description" content="TuffAgent is a browser extension for Chrome and Firefox. Describe a task and it reads pages, clicks, types and works your tabs, using the AI model you choose through OpenRouter.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="hero">
+  <div class="field fade" data-field="5" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Version 1.6 · Chrome and Firefox</p>
+    <h1 class="display rise d1">A browser agent<br>in your sidebar.</h1>
+    <p class="lede rise d2">Tell TuffAgent what you need done and it does it in your browser. It reads the page, clicks, types and moves between tabs, using whichever AI model you choose through OpenRouter.</p>
+    <div class="rise d3"><div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div></div>
+    <p class="fine rise d3">Free to install. You pay OpenRouter directly for the model you use.</p>
+    <div class="hero-shot rise d4">
+      <picture><source srcset="assets/img/scene-1-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/scene-1-light.webp" alt="TuffAgent in the browser’s side panel, adding a monitor to a shopping cart. A frame and cursor on the page show where it is working." width="1152" height="640" fetchpriority="high" decoding="async"></picture>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="examples">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Examples</p>
+      <h2>What you can ask it to do</h2>
+      <p class="lede">If you can do it on a web page with a mouse and keyboard, you can ask TuffAgent to do it. A few things people hand off:</p>
+    </div>
+    <div class="tasks">
+      <article class="task"><span class="n">01</span><q>Compare the three apartment listings I have open and put them in a table.</q><p>Reads each tab and answers in the sidebar with a table you can copy.</p></article>
+      <article class="task"><span class="n">02</span><q>Find the best-reviewed 27-inch 4K monitor under $350 and add it to my cart.</q><p>Searches the store, sorts by rating, reads the results and adds the winner. It stops before checkout.</p></article>
+      <article class="task"><span class="n">03</span><q>Group my tabs by topic.</q><p>Sorts your open tabs into named tab groups and leaves the odd ones out alone.</p></article>
+      <article class="task"><span class="n">04</span><q>Find the article about heat pumps I read last week and bookmark it.</q><p>Searches your history, opens the page and saves it to your bookmarks.</p></article>
+      <article class="task"><span class="n">05</span><q>Fill in this registration form with the details from my notes tab.</q><p>Copies each value across and reads every field back after typing it.</p></article>
+      <article class="task"><span class="n">06</span><q>Move every card in the Review column to Done.</q><p>Drags each card on the board and checks that it actually moved.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="how">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">While it works</p>
+        <h2>Every step shows up as it happens.</h2>
+        <p>The sidebar lists what TuffAgent opened, clicked and typed, and how long each step took. On the page itself, a thin frame and a cursor show where it’s working, and a label at the bottom says what it’s doing.</p>
+        <ul>
+          <li>Press <kbd>Esc</kbd> or the stop button to end a run at any point.</li>
+          <li>It’s set up to ask before buying, sending messages or deleting anything, unless that’s exactly what you asked for.</li>
+          <li>What it types never appears in the on-page label.</li>
+        </ul>
+      </div>
+      <div class="stage"><div class="field" data-field="11" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-live-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-live-light.webp" alt="The TuffAgent panel during a run: finished steps with timings, and a click in progress." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+
+    <div class="split flip">
+      <div>
+        <p class="eyebrow">When it’s done</p>
+        <h2>You get an answer, not just a finished page.</h2>
+        <p>At the end of a task, TuffAgent writes a short summary from what it actually saw, with prices, names, dates and counts as the page showed them. Each run ends with its step count, time, tokens and cost.</p>
+        <ul>
+          <li>Reopen any earlier chat from History.</li>
+          <li>Export a chat as a JSON log with every tool call and result. Your API key is never included.</li>
+        </ul>
+      </div>
+      <div class="stage"><div class="field" data-field="12" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-rentals-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-rentals-light.webp" alt="A finished task in the TuffAgent panel: steps across three tabs, then a table comparing three apartments." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+
+    <div class="split">
+      <div>
+        <p class="eyebrow">Models</p>
+        <h2>Use the model you prefer.</h2>
+        <p>TuffAgent connects to OpenRouter, so one key gives you Claude, GPT, Gemini, Grok, Qwen, Kimi and more than 300 other models that support tools. You can switch from the composer whenever you like, even partway through a chat.</p>
+        <a class="more" href="models.html">Choosing a model</a>
+      </div>
+      <div class="stage"><div class="field" data-field="13" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-picker-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-picker-light.webp" alt="The model picker, listing models with their context size and price per million tokens." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+
+    <div class="split flip">
+      <div>
+        <p class="eyebrow">Privacy</p>
+        <h2>Your data stays in your browser.</h2>
+        <p>There’s no TuffAgent account and no TuffAgent server. Your key, settings and chats are stored in your browser. While a task runs, the page content it needs goes to OpenRouter and the model provider you picked, and nowhere else.</p>
+        <a class="more" href="privacy.html">Read the privacy policy</a>
+      </div>
+      <div class="stage"><div class="field" data-field="14" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-settings-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-settings-light.webp" alt="TuffAgent settings: model, reasoning effort, theme, loader, fastest providers, page highlight and trusted input." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="speed">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Speed</p>
+      <h2>Built to finish tasks quickly.</h2>
+      <p class="lede">Most of the time a browser agent spends is waiting: on the model, on the page, on the next step. TuffAgent cuts that down in a few ways.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><span class="k">Streaming</span><h3>Steps start early</h3><p>A tool call starts as soon as its arguments arrive, so the browser is already working while the model writes the next one.</p></div>
+      <div class="fact"><span class="k">Parallel</span><h3>Independent steps run together</h3><p>Opening six tabs, or searching history and bookmarks at once, takes about as long as doing one.</p></div>
+      <div class="fact"><span class="k">Waiting</span><h3>Short, measured waits</h3><p>After an action it waits for the page to go quiet, usually around 90&nbsp;ms, instead of sleeping for a fixed time.</p></div>
+      <div class="fact"><span class="k">Caching</span><h3>Less to re-read</h3><p>Older tool output is trimmed in fixed steps, so earlier messages stay the same and the provider’s prompt cache keeps working.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="packs">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Site packs</p>
+        <h2>Extra tools for Google Docs and Canva.</h2>
+        <p>Some apps are hard to work with through clicks alone. On those sites TuffAgent loads tools made for the app. In Google Docs it can write formatted text, set styles, add comments and read the document back to check its work. In Canva it can read a design’s layers and set sizes, colors and positions exactly.</p>
+        <p class="muted" style="font-size:15px">Site packs need Chrome.</p>
+        <a class="more" href="site-packs.html">See what each pack does</a>
+      </div>
+      <div class="stage"><div class="field" data-field="15" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-docs-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-docs-light.webp" alt="TuffAgent tidying a Google Doc: rewriting it, setting the title style, making a checklist and adding a comment." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="field" data-field="33" data-lens></div>
+  <div class="wrap">
+    <h2>Add TuffAgent to your browser.</h2>
+    <p>Setup takes a couple of minutes: install the extension, paste an OpenRouter key, and open the sidebar with <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd>, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux.</p>
+    <div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div>
+    <p class="fine">Prefer to run it from source? <a href="install.html#source">See the manual install steps</a>.</p>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features · TuffAgent</title>
+<meta name="description" content="What TuffAgent can do: the tools it uses, how it reads pages and aims clicks, how it recovers from errors, and its settings and shortcuts.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TuffAgent">
+<meta property="og:title" content="Features · TuffAgent">
+<meta property="og:description" content="What TuffAgent can do: the tools it uses, how it reads pages and aims clicks, how it recovers from errors, and its settings and shortcuts.">
+<meta property="og:image" content="assets/img/og-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script type="module" src="assets/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="TuffAgent home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Menu"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14"/></svg></button>
+    <nav class="nav" id="nav" aria-label="Main">
+        <a href="features.html" aria-current="page">Features</a>
+        <a href="site-packs.html">Site packs</a>
+        <a href="models.html">Models</a>
+        <a href="faq.html">FAQ</a>
+        <a href="changelog.html">Changelog</a>
+        <a class="btn ink sm" href="install.html">Get TuffAgent</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="page-head">
+  <div class="field fade" data-field="21" data-lens></div>
+  <div class="wrap">
+    <p class="eyebrow rise">Features</p>
+    <h1 class="rise d1">What TuffAgent can do</h1>
+    <p class="lede rise d2">TuffAgent works the browser through a set of tools. It can read and act on pages, manage your tabs, and use your bookmarks, history and downloads when a task calls for it. This page goes through each part.</p>
+    <nav class="toc rise d3" aria-label="On this page"><a href="#tools">Tools</a><a href="#reading">Reading pages</a><a href="#acting">Acting</a><a href="#recovery">Recovery</a><a href="#history">History and logs</a><a href="#settings">Settings</a><a href="#shortcuts">Shortcuts</a></nav>
+  </div>
+</section>
+
+<section class="sec" id="tools">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Tools</p>
+      <h2>The tools it has to work with</h2>
+      <p class="lede">The model picks from these on every step. Site packs add more on Google Docs and Canva.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="14" height="10" rx="1.5"/><path d="M2 8h14M5 5V3h6v2"/></svg></span><h3>Tabs</h3><p>List, open, switch between, close and group tabs.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="7"/><path d="m11.8 6.2-1.6 4-4 1.6 1.6-4z"/></svg></span><h3>Navigation</h3><p>Go to a URL, go back or forward, and reload.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2h7l3 3v11H4z"/><path d="M7 8h5M7 11h5M7 14h3"/></svg></span><h3>Reading</h3><p>Page snapshots in reading order, text search on long pages, and finding elements by their label.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5l10 5.5-4.4 1.1-2.1 4.2z"/></svg></span><h3>Acting</h3><p>Click, type, press keys, paste formatted text, go through menus, pick from dropdowns, drag, scroll and hover.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4.5" width="14" height="10" rx="1.5"/><circle cx="9" cy="9.5" r="2.6"/><path d="M6.5 4.5 7.5 3h3l1 1.5"/></svg></span><h3>Vision</h3><p>Screenshots with every clickable element tagged, for models that can read images.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 5-4 4 4 4M12 5l4 4-4 4M10.5 3l-3 12"/></svg></span><h3>Scripting</h3><p>Run JavaScript in the page or any frame when the other tools can’t do the job.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2h8v14l-4-3-4 3z"/></svg></span><h3>Browser data</h3><p>Search and create bookmarks, search your history, and check recent downloads.</p></div>
+      <div class="card"><span class="ic"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5h8M7 9h8M7 13.5h8"/><path d="m2.5 4.5 1 1 2-2M2.5 9l1 1 2-2M2.5 13.5l1 1 2-2"/></svg></span><h3>Planning</h3><p>A checklist for long tasks, so no part of the request gets skipped.</p></div>
+    </div>
+    <div class="hero-shot" style="margin-top:clamp(48px,6vw,72px)">
+      <picture><source srcset="assets/img/scene-3-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/scene-3-light.webp" alt="TuffAgent after grouping tabs into Lisbon trip, Monitors and Taxes. The tab groups are visible in the browser’s tab strip." width="1152" height="640" loading="lazy" decoding="async"></picture>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="reading">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Reading pages</p>
+        <h2>It reads a page the way you would.</h2>
+        <p>Before it acts, TuffAgent takes a snapshot of the page: the text, headings and controls, in the order you’d read them.</p>
+      </div>
+      <div class="split-list">
+        <ul><li>Tables come through row by row, and links stay inline with the sentence they’re in.</li><li>When a page is too long to send in full, what’s on screen and any open dialog come first.</li><li>It finds clickable things the way a person does: buttons and links, but also elements that only show a pointer cursor, custom checkboxes, and controls inside shadow DOM and frames.</li><li>Icon-only buttons get a name from their icon, and unlabeled fields get one from the text just before them.</li><li>For long pages, a search returns just the lines that mention what it’s looking for.</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="acting">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Acting</p>
+        <h2>It clicks what it means to click.</h2>
+        <p>Most mistakes browser agents make come from aiming at the wrong element. TuffAgent is careful about it.</p>
+      </div>
+      <div class="split-list">
+        <ul><li>Elements are targeted by their visible label, such as “Add to cart”, plus a nearby label when the same text appears more than once.</li><li>Exact matches win. A partial match is used only when it’s the only one, and never for something that would lock, delete, remove or move an item.</li><li>If a cookie banner or sticky header covers a button, it clicks a visible part of the button or scrolls it into the clear.</li><li>Typing replaces a field’s text and reads it back. Date, time and dropdown fields accept plain values like “March 14” or “1:30 PM”.</li><li>Drags report whether the item actually moved, and a drag that changed nothing counts as a failure.</li><li>Every action reports what changed: what appeared, what was checked or expanded, and any new messages on the page.</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="recovery">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Recovery</p>
+      <h2>When something goes wrong, it keeps going.</h2>
+      <p class="lede">Long tasks run into busy servers, pop-ups and pages that don’t behave. These are handled without you stepping in.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><span class="k">Network</span><h3>Retries</h3><p>Model calls are retried with backoff after rate limits, busy providers, dropped connections, stalled streams and empty replies.</p></div>
+      <div class="fact"><span class="k">Context</span><h3>Long chats</h3><p>If a chat outgrows the model’s context window, the request is retried with a shorter history instead of failing.</p></div>
+      <div class="fact"><span class="k">Loops</span><h3>Stuck patterns</h3><p>Repeating the same call with the same result adds a note telling the model to try something else. Every 20 rounds, the original request is repeated so the goal stays in view.</p></div>
+      <div class="fact"><span class="k">Pages</span><h3>Dialogs and timeouts</h3><p>Pop-up alerts and confirmations are answered and reported so they can’t freeze a run, and every page call has a time limit.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="history">
+  <div class="wrap">
+    <div class="split flip">
+      <div>
+        <p class="eyebrow">History and logs</p>
+        <h2>Every chat is saved, and you can export it.</h2>
+        <p>The line under the composer shows the chat’s working time, tokens and cost, and updates live during a run. The clock button opens your history, where you can search by title or model, reopen a chat, or export it.</p>
+        <ul>
+          <li>An export is a JSON file with every message, tool call and result, the page URL after each action, model timings, token use and cost.</li>
+          <li>It also records the settings and system prompt that were in effect.</li>
+          <li>API keys are never included.</li>
+        </ul>
+      </div>
+      <div class="stage"><div class="field" data-field="16" data-lens></div>
+        <div class="panel" style="width:min(100%,360px)"><picture><source srcset="assets/img/panel-history-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/img/panel-history-light.webp" alt="The History sheet: saved chats grouped by day, with search and an Export all button." width="400" height="760" loading="lazy" decoding="async"></picture></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="settings">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Settings</p>
+      <h2>Settings</h2>
+      <p class="lede">Open them with the sliders button at the top of the panel.</p>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+      <tbody><tr><td>Model</td><td>Claude Haiku 5.5</td><td>Any OpenRouter model that supports tools. The picker is also in the composer.</td></tr>
+<tr><td>Reasoning</td><td>Auto</td><td>Effort for models that think before answering: Auto, Low, Medium or High.</td></tr>
+<tr><td>Theme</td><td>System</td><td>System, Light or Dark.</td></tr>
+<tr><td>Loader</td><td>Line</td><td>How the composer shows the agent working: a soft line along its edge, or an ASCII meter.</td></tr>
+<tr><td>Fastest providers</td><td>On</td><td>Sends each request to the host with the lowest latency for that model.</td></tr>
+<tr><td>Page highlight</td><td>On</td><td>The frame and cursor on pages the agent is working in.</td></tr>
+<tr><td>Trusted input</td><td>On</td><td>Real mouse and keyboard events through the DevTools protocol, for sites that ignore simulated ones. Chrome shows a debugging bar while the agent acts. Not available in Firefox.</td></tr>
+<tr><td>Step limit</td><td>100</td><td>Model rounds per request. Can be turned off.</td></tr>
+<tr><td>Custom instructions</td><td>None</td><td>Text added to every request, for preferences like a search engine or a tone of voice.</td></tr>
+<tr><td>Chat history</td><td>–</td><td>How many chats are saved and how much space they take, with Delete all.</td></tr></tbody>
+    </table></div>
+    <p class="note">When a run fails for a reason you can fix, the error tells you how: a rejected key offers <strong>Update key</strong>, an empty balance offers <strong>Add credits</strong> and <strong>Change model</strong>, and a model that can’t take the request offers <strong>Change model</strong>.</p>
+  </div>
+</section>
+
+<section class="sec" id="shortcuts">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Shortcuts</p>
+      <h2>Keyboard shortcuts</h2>
+      <p class="lede">On Windows and Linux, use <kbd>Ctrl</kbd> in place of <kbd>⌘</kbd>. Settings lists the keys your browser actually has bound.</p>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Keys</th><th>Action</th></tr></thead>
+      <tbody><tr><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd></td><td>Open the panel (Chrome) or show and hide the sidebar (Firefox)</td></tr>
+<tr><td><kbd>⏎</kbd></td><td>Send</td></tr>
+<tr><td><kbd>⇧</kbd> <kbd>⏎</kbd></td><td>New line</td></tr>
+<tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Step through earlier prompts, in an empty composer</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Stop the agent, or close a sheet</td></tr>
+<tr><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>O</kbd></td><td>New chat</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="field" data-field="33" data-lens></div>
+  <div class="wrap">
+    <h2>Add TuffAgent to your browser.</h2>
+    <p>Setup takes a couple of minutes: install the extension, paste an OpenRouter key, and open the sidebar with <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Y</kbd>, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Y</kbd> on Windows and Linux.</p>
+    <div class="stores">
+      <a class="btn ink store" data-store="chrome" href="https://chromewebstore.google.com/detail/tuffagent/CHROME_EXTENSION_ID"><span class="lbl"><small>Chrome Web Store</small><b>Add to Chrome</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn line store" data-store="firefox" href="https://addons.mozilla.org/firefox/addon/FIREFOX_ADDON_SLUG/"><span class="lbl"><small>Firefox Add-ons</small><b>Add to Firefox</b></span><svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+    </div>
+    <p class="fine">Prefer to run it from source? <a href="install.html#source">See the manual install steps</a>.</p>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="2.5"/><path d="M5.2 6.2h13.6v2.6H5.2zM11.635 7.199l2.53.602-2.801 11.765-2.53-.602z"/></svg><span>TuffAgent</span></a>
+        <p>A browser agent for Chrome and Firefox. It works from your sidebar, with the model you choose.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="features.html">Features</a></li><li><a href="site-packs.html">Site packs</a></li><li><a href="models.html">Models and cost</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul><li><a href="install.html">Get started</a></li><li><a href="faq.html">FAQ</a></li><li><a href="https://github.com/beckettclarke/TuffAgent/issues">Report a problem</a></li><li><a href="https://github.com/beckettclarke/TuffAgent">Source on GitHub</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
+      </div>
+    </div>
+    <div class="base"><span>v1.6.0 · Chrome 121+ · Firefox 128+</span><span>Made by <a href="https://beckettclarke.ca">Beckett Clarke</a></span></div>
+  </div>
+</footer>
+</body>
+</html>
