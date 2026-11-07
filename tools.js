@@ -711,7 +711,7 @@ export const TOOLS = [
     clicks: { type: 'integer', description: '2 = double-click, 3 = triple-click (selects a paragraph)' },
     modifiers: { type: 'string', description: 'Held keys, e.g. "shift" to extend a selection, "meta" to open a link in a background tab' }, tab_id: tabId,
   }),
-  fn('type', 'Type text in one go. Into a field (ref or target), replacing its text unless clear=false; without one, at the current caret/focus without clearing (rich editors like Google Docs — click into them first). Date/time inputs take their value format (2025-03-14, 13:30); a <select> picks the matching option.', {
+  fn('type', 'Type text in one go. Into a field (ref or target), replacing its text unless clear=false; without one, at the current caret/focus without clearing (rich editors like Google Docs — click into them first). Newlines in the text become line breaks and never send a chat message; pass submit (or key Enter) to send. Date/time inputs take their value format (2025-03-14, 13:30); a <select> picks the matching option.', {
     ...aimBy, selector: { type: 'string' }, text: { type: 'string' },
     clear: { type: 'boolean' }, submit: { type: 'boolean', description: 'Press Enter after' }, tab_id: tabId,
   }, ['text']),
@@ -951,6 +951,8 @@ async function run(name, a) {
       } else {
         text = (await cs(id, 'click', a)) ?? 'Clicked (page navigated)';
       }
+      // A checkbox or radio the click didn't change: retried on the control, or an error.
+      if (!(+a.clicks > 1 || a.double)) text += (await cs(id, 'toggleCheck')) || '';
       text = await afterAction(id, t0, text);
       return { text: text + await selectionNote(id), label: firstLine(text).replace(/ \((warning|\d+ matches|no exact match|closed an open).*$/, '') };
     }
@@ -992,10 +994,13 @@ async function run(name, a) {
             await cdpType(id, s);
           } else {
             // insertText replaces the selection, so Backspace is only for clearing to empty.
-            // Rich editors get Enter between lines (a raw "\n" may not make a paragraph).
+            // Rich editors get a key between lines (a raw "\n" may not make a paragraph):
+            // Shift+Enter, since in chat composers (Claude, ChatGPT, Slack, Discord) a
+            // plain Enter sends the message half-typed. Document editors, where Enter
+            // only makes a paragraph, get Enter. Sending is the submit flag's job.
             const parts = f.plain ? [s] : s.split('\n');
             for (let i = 0; i < parts.length; i++) {
-              if (i) await cdpKeys(id, 'Enter');
+              if (i) await cdpKeys(id, f.paragraphs ? 'Enter' : 'Shift+Enter');
               if (parts[i]) await cdp(id, 'Input.insertText', { text: parts[i] });
             }
           }

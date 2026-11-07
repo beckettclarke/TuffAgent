@@ -961,6 +961,7 @@
     const a = await clearPopup(t, aim(t));
     begin();
     let { el } = a;
+    noteToggle(el);
     const doc = el.ownerDocument;
     let target = el;
     const top = doc.elementFromPoint(a.lx, a.ly);
@@ -979,11 +980,41 @@
     return `Clicked ${a.desc}${a.covered ? ' — sent the click to the element itself' : ''}${selectHint(el)}` + await finish();
   }
 
+  // Checkboxes and radios: a click can land and still leave the control as it was
+  // (a stale ref, a frame that moved, a wrapper that eats the event), and "Clicked"
+  // then reads as done. Remember the control and its state before the click, check
+  // it after, and click the control itself once if the click didn't take.
+  let lastToggle = null;
+  function noteToggle(el) {
+    lastToggle = null;
+    const c = tag(el) === 'label' && el.control ? el.control : el;
+    if (tag(c) === 'input' && (c.type === 'checkbox' || c.type === 'radio')) lastToggle = { el: c, kind: c.type, native: true, was: c.checked };
+    else {
+      const role = roleOf(c);
+      if (role === 'radio' || role === 'checkbox' || role === 'switch') lastToggle = { el: c, kind: role, native: false, was: c.getAttribute('aria-checked') === 'true' };
+    }
+  }
+  async function toggleCheck() {
+    const t = lastToggle;
+    lastToggle = null;
+    if (!t || !t.el.isConnected) return '';
+    const now = () => (t.native ? t.el.checked : t.el.getAttribute('aria-checked') === 'true');
+    // A radio is done once it is on; a checkbox or switch once it flipped.
+    const took = () => (t.kind === 'radio' ? now() : now() !== t.was);
+    if (took()) return '';
+    await settle(40, 300);
+    if (took()) return '';
+    t.el.click();
+    await settle(60, 400);
+    if (took()) return ` (the click left it ${t.was ? 'checked' : 'unchecked'}; clicked the ${t.kind} itself and it took)`;
+    throw new Error(`Clicked ${describe(t.el)}, but it is still ${now() ? 'checked' : 'unchecked'}. The page did not take the click: read_page again for a fresh ref, or click its label.`);
+  }
+
   // Coordinates for trusted (CDP) input; the panel dispatches the real events.
   function point(t = {}) {
     const a = aim(t);
     begin();
-    if (!t.hover) fx.ripple(a.x, a.y);
+    if (!t.hover) { fx.ripple(a.x, a.y); noteToggle(a.el); }
     return { x: a.x, y: a.y, desc: a.desc + selectHint(a.el), covered: a.covered, popup: a.popup };
   }
 
@@ -1169,8 +1200,12 @@
     // Fields that suggest as you type need longer to show their list.
     const suggest = roleOf(el) === 'combobox' || el.getAttribute('aria-autocomplete') || el.hasAttribute('list') ||
       el.type === 'search' || /listbox|menu|dialog|grid|tree/.test(el.getAttribute('aria-haspopup') || '');
-    return { el, cleared, kind, plain: kind === 'plain', replace: clear, suggest: !!suggest, ref: refOf(el), password: el.type === 'password', desc };
+    return { el, cleared, kind, plain: kind === 'plain', replace: clear, suggest: !!suggest, ref: refOf(el), password: el.type === 'password', paragraphs: paragraphEditor(), desc };
   }
+  // Rich editors where Enter only starts a new paragraph and never sends anything.
+  // Everywhere else a typed newline is Shift+Enter: in chat composers Enter sends.
+  const DOC_HOSTS = /^(docs\.google\.com|[\w-]+\.sharepoint\.com|word-edit\.officeapps\.live\.com)$/;
+  const paragraphEditor = () => DOC_HOSTS.test(location.hostname);
   // Select the prepared field's whole text again, after the page's focus handlers
   // had their turn: some reformat the value on focus ("378 px" → "378"), which
   // drops the selection and leaves the caret at the end, so typing appends.
@@ -1691,7 +1726,7 @@
   window.__tuff = {
     snapshot, find, click, point, type, key, keyPrep, scroll, hover, selectOption, drag, dragPoints, dragCheck, paste, menuFind,
     prepField: (t) => { const info = prepField(t); delete info.el; return info; },
-    setValue, fieldState, reselect, guard, unguard, execPaste,
+    setValue, fieldState, reselect, guard, unguard, execPaste, toggleCheck,
     dragDone: (desc, diff) => { const c = dragCheck(); const f = dragFailed(desc, c, diff); if (f) throw f; return c.text; },
     text, waitFor, viewport, begin, changes,
     settle: (q, c) => finish(q, c),

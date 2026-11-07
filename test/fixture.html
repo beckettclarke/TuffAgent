@@ -80,6 +80,14 @@
   <div id="accessibility_dom-0"><p><strong>Mirror only text</strong></p></div>
 </section>
 
+<section>
+  <div id="chat" contenteditable="true" role="textbox" aria-label="Message the bot"></div>
+  <p id="chatSent"></p>
+  <label><input type="radio" name="tf" id="tfTrue"> True answer</label>
+  <label><input type="radio" name="tf" id="tfFalse"> False answer</label>
+  <label><input type="checkbox" id="locked"> Locked option</label>
+</section>
+
 <div class="spacer"></div>
 <footer><p>Footer fact: the answer is 42.</p></footer>
 
@@ -143,6 +151,13 @@
   // An open file-type list over the Download button; Escape closes it.
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('typelist')?.remove(); });
   document.getElementById('dlbtn').onclick = () => { document.getElementById('dlstate').textContent = 'Downloaded'; };
+  // A chat composer: Enter sends (so does a paragraph break), Shift+Enter is a new line.
+  const chat = document.getElementById('chat');
+  const send = () => { document.getElementById('chatSent').textContent += '[sent: ' + chat.innerText + ']'; chat.innerHTML = ''; };
+  chat.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  chat.addEventListener('beforeinput', (e) => { if (e.inputType === 'insertParagraph') { e.preventDefault(); send(); } });
+  // A checkbox whose page refuses every click.
+  document.getElementById('locked').addEventListener('click', (e) => e.preventDefault());
   const sh = document.getElementById('host').attachShadow({ mode: 'open' });
   sh.innerHTML = '<button id="sb">Shadow save</button>';
   sh.getElementById('sb').onclick = function () { this.textContent = 'Shadow saved'; };

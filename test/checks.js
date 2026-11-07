@@ -131,6 +131,20 @@ window.runChecks = async () => {
     try { await T.type({ target: 'Products', text: 'x' }); return { pass: false, detail: 'typed somewhere' }; }
     catch (e) { return has(e.message, 'is not a text field'); }
   });
+  await check('type: newlines in a chat composer do not send it', async () => {
+    await T.type({ target: 'Message the bot', text: '\nQ1: a\nQ2: b' });
+    const sent = $('#chatSent').textContent, kept = $('#chat').innerText;
+    return !sent && kept.includes('Q1: a') && kept.includes('Q2: b') || { pass: false, detail: `sent "${sent}", composer "${kept}"` };
+  });
+  await check('click: a radio the click missed is clicked itself', async () => {
+    T.point({ target: 'True answer' }); // aimed, but no click arrives (a stale or misplaced click)
+    const r = await T.toggleCheck();
+    return $('#tfTrue').checked ? has(r, 'clicked the radio itself') : { pass: false, detail: r };
+  });
+  await check('click: a checkbox that stays unchanged is an error', async () => {
+    try { await T.click({ target: 'Locked option' }); await T.toggleCheck(); return { pass: false, detail: 'no error' }; }
+    catch (e) { return has(e.message, 'still unchecked'); }
+  });
   await check('target: the label beats a container that mentions it', () => has(T.point({ target: 'Arrival' }).desc, 'textbox "Arrival"'));
   await check('prepField: combobox is flagged as suggesting', () => T.prepField({ target: 'City' }).suggest === true);
 
